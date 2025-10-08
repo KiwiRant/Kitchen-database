@@ -82,4 +82,30 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+// --- QUOTES ---
+if (pathname === '/api/quotes') {
+  const auth = await verifyAuth(request, env);
+  if (!auth.ok) return auth.response;
+
+  if (request.method === 'GET') return getQuotes(env);
+  if (request.method === 'POST') return addQuote(request, env, auth.user);
+}
+
+// --- QUOTE HANDLERS ---
+async function getQuotes(env) {
+  const result = await env.DB.prepare(
+    `SELECT * FROM quotes ORDER BY created_at DESC`
+  ).all();
+  return json(result.results || []);
+}
+
+async function addQuote(request, env, username) {
+  const { sale_id, customer_name, kitchen_model, quote_total, notes } = await request.json();
+
+  await env.DB.prepare(
+    `INSERT INTO quotes (sale_id, customer_name, kitchen_model, quote_total, notes, created_by)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(sale_id, customer_name, kitchen_model, quote_total, notes, username).run();
+
+  return json({ success: true });
 }
