@@ -1,4 +1,5 @@
 import { jwtVerify, SignJWT } from 'jose';
+import bcrypt from 'bcrypt';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -28,22 +29,43 @@ export async function onRequest(context) {
     if (request.method === 'POST') return addQuote(request, env, auth.user);
   }
 
+  // --- ADD USER (optional admin endpoint) ---
+  if (pathname === '/api/add-user' && request.method === 'POST') {
+    const auth = await verifyAuth(request, env);
+    if (!auth.ok) return auth.response;
+
+    const { name, email, role, password } = await request.json();
+    const hashed = await bcrypt.hash(password, 10);
+
+    await env.DB.prepare(
+      `INSERT INTO users (name, email, role, password) VALUES (?, ?, ?, ?)`
+    ).bind(name, email, role, hashed).run();
+
+    return json({ success: true, message: 'User created' });
+  }
+
   return new Response('Not found', { status: 404 });
 }
 
 // --------------------
-// LOGIN HANDLER
+// LOGIN HANDLER (email + password)
 // --------------------
 async function handleLogin(request, env) {
-  const { username, password } = await request.json();
+  const { email, password } = await request.json();
 
+  // Fetch user by email
   const user = await env.DB.prepare(
-    `SELECT * FROM users WHERE username = ? AND password = ?`
-  ).bind(username, password).first();
+    `SELECT * FROM users WHERE email = ?`
+  ).bind(email).first();
 
   if (!user) return json({ success: false, message: 'Invalid credentials' }, 401);
 
-  const token = await new SignJWT({ username })
+  // Check password
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return json({ success: false, message: 'Invalid credentials' }, 401);
+
+  // Generate JWT token
+  const token = await new SignJWT({ email, role: user.role })
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('2h')
     .sign(new TextEncoder().encode(env.JWT_SECRET));
@@ -66,7 +88,7 @@ async function verifyAuth(request, env) {
       token,
       new TextEncoder().encode(env.JWT_SECRET)
     );
-    return { ok: true, user: payload.username };
+    return { ok: true, user: payload.email };
   } catch {
     return { ok: false, response: json({ error: 'Invalid token' }, 401) };
   }
