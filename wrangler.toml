@@ -1,0 +1,4 @@
+[[d1_databases]]
+binding = "DB"
+database_name = "kitchen_sales"
+database_id = "kitchen-sales"
