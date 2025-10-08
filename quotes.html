@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quotes | Kitchen Sales</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <nav>
+    <h2>Quotes</h2>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <section class="content">
+    <h3>Create New Quote</h3>
+    <form id="quoteForm">
+      <input type="number" id="sale_id" placeholder="Sale ID" required />
+      <input type="text" id="customer_name" placeholder="Customer Name" required />
+      <input type="text" id="kitchen_model" placeholder="Kitchen Model" required />
+      <input type="number" id="quote_total" placeholder="Quote Total" required />
+      <textarea id="notes" placeholder="Additional Notes"></textarea>
+      <button type="submit">Create Quote</button>
+    </form>
+
+    <h3>Existing Quotes</h3>
+    <table id="quotesTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Model</th>
+          <th>Total</th>
+          <th>Date</th>
+          <th>PDF</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/index.html';
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('token');
+      window.location.href = '/index.html';
+    });
+
+    async function loadQuotes() {
+      const res = await fetch('/api/quotes', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const quotes = await res.json();
+      const tbody = document.querySelector('#quotesTable tbody');
+      tbody.innerHTML = '';
+      quotes.forEach(q => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${q.id}</td>
+            <td>${q.customer_name}</td>
+            <td>${q.kitchen_model}</td>
+            <td>$${q.quote_total}</td>
+            <td>${new Date(q.created_at).toLocaleDateString()}</td>
+            <td><a href="quote-template.html?id=${q.id}" target="_blank">View PDF</a></td>
+          </tr>`;
+      });
+    }
+
+    document.getElementById('quoteForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const quote = {
+        sale_id: document.getElementById('sale_id').value,
+        customer_name: document.getElementById('customer_name').value,
+        kitchen_model: document.getElementById('kitchen_model').value,
+        quote_total: document.getElementById('quote_total').value,
+        notes: document.getElementById('notes').value,
+      };
+      await fetch('/api/quotes', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(quote)
+      });
+      e.target.reset();
+      loadQuotes();
+    });
+
+    loadQuotes();
+  </script>
+</body>
+</html>
