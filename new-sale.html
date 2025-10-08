@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Sale | Kitchen Sales Portal</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <nav class="bg-blue-600 text-white p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">Add New Sale</h1>
+    <button id="backBtn" class="bg-white text-blue-600 px-3 py-1 rounded">Back</button>
+  </nav>
+
+  <div class="p-6 max-w-2xl mx-auto bg-white shadow rounded mt-6">
+    <form id="saleForm" class="space-y-4">
+      <div>
+        <label class="block font-medium text-gray-700">Customer Name</label>
+        <input type="text" name="customer_name" class="w-full p-2 border rounded" required>
+      </div>
+
+      <div>
+        <label class="block font-medium text-gray-700">Customer Email</label>
+        <input type="email" name="customer_email" class="w-full p-2 border rounded">
+      </div>
+
+      <div>
+        <label class="block font-medium text-gray-700">Kitchen ID</label>
+        <input type="number" name="kitchen_id" class="w-full p-2 border rounded" required>
+      </div>
+
+      <div>
+        <label class="block font-medium text-gray-700">Add-ons</label>
+        <input type="text" name="addons" class="w-full p-2 border rounded">
+      </div>
+
+      <div>
+        <label class="block font-medium text-gray-700">Sale Amount</label>
+        <input type="number" name="sale_amount" class="w-full p-2 border rounded" required>
+      </div>
+
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Save Sale
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    const backBtn = document.getElementById('backBtn');
+    const form = document.getElementById('saleForm');
+
+    if (!token) {
+      window.location.href = '/index.html';
+    }
+
+    backBtn.addEventListener('click', () => window.location.href = '/dashboard.html');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = Object.fromEntries(new FormData(form).entries());
+      const user = JSON.parse(localStorage.getItem('user'));
+
+      const payload = { ...formData, user_id: user.id };
+
+      const res = await fetch('/api/add-sale', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        alert('Sale added successfully!');
+        window.location.href = '/dashboard.html';
+      } else {
+        alert('Error: ' + (result.error || 'Failed to add sale'));
+      }
+    });
+  </script>
+
+</body>
+</html>
