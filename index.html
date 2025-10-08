@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kitchen Sales Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col items-center p-8">
+
+  <h1 class="text-3xl font-bold mb-6">Kitchen Sales Tracker</h1>
+
+  <!-- Sale Form -->
+  <form id="saleForm" class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-6 w-full max-w-lg">
+    <h2 class="text-xl font-semibold mb-4">Add a Sale</h2>
+
+    <label class="block mb-2 text-sm font-bold">User ID</label>
+    <input type="number" name="user_id" class="w-full border rounded p-2 mb-4" required>
+
+    <label class="block mb-2 text-sm font-bold">Customer Name</label>
+    <input type="text" name="customer_name" class="w-full border rounded p-2 mb-4" required>
+
+    <label class="block mb-2 text-sm font-bold">Kitchen ID</label>
+    <input type="number" name="kitchen_id" class="w-full border rounded p-2 mb-4" required>
+
+    <label class="block mb-2 text-sm font-bold">Add-ons</label>
+    <input type="text" name="addons" class="w-full border rounded p-2 mb-4">
+
+    <label class="block mb-2 text-sm font-bold">Sale Amount</label>
+    <input type="number" name="sale_amount" class="w-full border rounded p-2 mb-4" required>
+
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+      Add Sale
+    </button>
+  </form>
+
+  <!-- Sales Table -->
+  <div class="bg-white shadow-md rounded p-6 w-full max-w-4xl">
+    <h2 class="text-xl font-semibold mb-4">All Sales</h2>
+    <table class="w-full border-collapse">
+      <thead>
+        <tr class="bg-gray-100 text-left">
+          <th class="border p-2">Customer</th>
+          <th class="border p-2">Kitchen</th>
+          <th class="border p-2">Add-ons</th>
+          <th class="border p-2">Amount</th>
+          <th class="border p-2">Date</th>
+        </tr>
+      </thead>
+      <tbody id="salesTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const form = document.getElementById('saleForm');
+    const table = document.getElementById('salesTable');
+
+    // Fetch all sales from API
+    async function loadSales() {
+      table.innerHTML = '<tr><td colspan="5" class="p-4 text-center">Loading...</td></tr>';
+      try {
+        const res = await fetch('/api/get-sales');
+        const data = await res.json();
+        if (!data.length) {
+          table.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No sales yet</td></tr>';
+          return;
+        }
+        table.innerHTML = data.map(s => `
+          <tr>
+            <td class="border p-2">${s.customer_name}</td>
+            <td class="border p-2">${s.kitchen}</td>
+            <td class="border p-2">${s.addons || '-'}</td>
+            <td class="border p-2">$${s.sale_amount}</td>
+            <td class="border p-2">${new Date(s.sale_date).toLocaleDateString()}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error(err);
+        table.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">Failed to load sales</td></tr>';
+      }
+    }
+
+    // Handle form submission
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      const res = await fetch('/api/add-sale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        alert('Sale added successfully!');
+        form.reset();
+        loadSales();
+      } else {
+        alert('Error: ' + (result.error || 'Failed to add sale'));
+      }
+    });
+
+    loadSales();
+  </script>
+
+</body>
+</html>
