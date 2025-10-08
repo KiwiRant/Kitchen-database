@@ -1,4 +1,3 @@
-// /functions/api.js
 import { jwtVerify, SignJWT } from 'jose';
 
 export async function onRequest(context) {
@@ -6,10 +5,12 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const { pathname } = url;
 
+  // --- LOGIN ---
   if (pathname === '/api/login' && request.method === 'POST') {
     return handleLogin(request, env);
   }
 
+  // --- SALES ---
   if (pathname === '/api/sales') {
     const auth = await verifyAuth(request, env);
     if (!auth.ok) return auth.response;
@@ -18,11 +19,21 @@ export async function onRequest(context) {
     if (request.method === 'POST') return addSale(request, env, auth.user);
   }
 
+  // --- QUOTES ---
+  if (pathname === '/api/quotes') {
+    const auth = await verifyAuth(request, env);
+    if (!auth.ok) return auth.response;
+
+    if (request.method === 'GET') return getQuotes(env);
+    if (request.method === 'POST') return addQuote(request, env, auth.user);
+  }
+
   return new Response('Not found', { status: 404 });
 }
 
-// --- Handlers ---
-
+// --------------------
+// LOGIN HANDLER
+// --------------------
 async function handleLogin(request, env) {
   const { username, password } = await request.json();
 
@@ -40,6 +51,9 @@ async function handleLogin(request, env) {
   return json({ success: true, token });
 }
 
+// --------------------
+// AUTH VERIFICATION
+// --------------------
 async function verifyAuth(request, env) {
   const header = request.headers.get('Authorization');
   if (!header || !header.startsWith('Bearer ')) {
@@ -58,6 +72,9 @@ async function verifyAuth(request, env) {
   }
 }
 
+// --------------------
+// SALES HANDLERS
+// --------------------
 async function getSales(env) {
   const result = await env.DB.prepare(
     `SELECT * FROM sales ORDER BY created_at DESC`
@@ -76,22 +93,9 @@ async function addSale(request, env, username) {
   return json({ success: true });
 }
 
-// --- Helper ---
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-// --- QUOTES ---
-if (pathname === '/api/quotes') {
-  const auth = await verifyAuth(request, env);
-  if (!auth.ok) return auth.response;
-
-  if (request.method === 'GET') return getQuotes(env);
-  if (request.method === 'POST') return addQuote(request, env, auth.user);
-}
-
-// --- QUOTE HANDLERS ---
+// --------------------
+// QUOTES HANDLERS
+// --------------------
 async function getQuotes(env) {
   const result = await env.DB.prepare(
     `SELECT * FROM quotes ORDER BY created_at DESC`
@@ -108,4 +112,14 @@ async function addQuote(request, env, username) {
   ).bind(sale_id, customer_name, kitchen_model, quote_total, notes, username).run();
 
   return json({ success: true });
+}
+
+// --------------------
+// HELPER
+// --------------------
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
