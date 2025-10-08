@@ -1,0 +1,85 @@
+// /functions/api.js
+import { jwtVerify, SignJWT } from 'jose';
+
+export async function onRequest(context) {
+  const { request, env } = context;
+  const url = new URL(request.url);
+  const { pathname } = url;
+
+  if (pathname === '/api/login' && request.method === 'POST') {
+    return handleLogin(request, env);
+  }
+
+  if (pathname === '/api/sales') {
+    const auth = await verifyAuth(request, env);
+    if (!auth.ok) return auth.response;
+
+    if (request.method === 'GET') return getSales(env);
+    if (request.method === 'POST') return addSale(request, env, auth.user);
+  }
+
+  return new Response('Not found', { status: 404 });
+}
+
+// --- Handlers ---
+
+async function handleLogin(request, env) {
+  const { username, password } = await request.json();
+
+  const user = await env.DB.prepare(
+    `SELECT * FROM users WHERE username = ? AND password = ?`
+  ).bind(username, password).first();
+
+  if (!user) return json({ success: false, message: 'Invalid credentials' }, 401);
+
+  const token = await new SignJWT({ username })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('2h')
+    .sign(new TextEncoder().encode(env.JWT_SECRET));
+
+  return json({ success: true, token });
+}
+
+async function verifyAuth(request, env) {
+  const header = request.headers.get('Authorization');
+  if (!header || !header.startsWith('Bearer ')) {
+    return { ok: false, response: json({ error: 'Unauthorized' }, 401) };
+  }
+
+  const token = header.split(' ')[1];
+  try {
+    const { payload } = await jwtVerify(
+      token,
+      new TextEncoder().encode(env.JWT_SECRET)
+    );
+    return { ok: true, user: payload.username };
+  } catch {
+    return { ok: false, response: json({ error: 'Invalid token' }, 401) };
+  }
+}
+
+async function getSales(env) {
+  const result = await env.DB.prepare(
+    `SELECT * FROM sales ORDER BY created_at DESC`
+  ).all();
+  return json(result.results || []);
+}
+
+async function addSale(request, env, username) {
+  const { customer_name, kitchen_model, price, details } = await request.json();
+
+  await env.DB.prepare(
+    `INSERT INTO sales (customer_name, kitchen_model, price, details, created_by)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(customer_name, kitchen_model, price, details, username).run();
+
+  return json({ success: true });
+}
+
+// --- Helper ---
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
