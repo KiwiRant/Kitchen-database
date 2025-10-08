@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard | Kitchen Sales Portal</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <nav class="bg-blue-600 text-white p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">Kitchen Sales Dashboard</h1>
+    <div>
+      <button id="newSaleBtn" class="bg-white text-blue-600 px-3 py-1 rounded mr-2">+ New Sale</button>
+      <button id="logoutBtn" class="bg-red-500 px-3 py-1 rounded">Logout</button>
+    </div>
+  </nav>
+
+  <div class="p-6">
+    <h2 class="text-2xl font-semibold mb-4">Your Quotes</h2>
+    <table class="w-full border-collapse bg-white shadow rounded">
+      <thead class="bg-gray-100 text-left">
+        <tr>
+          <th class="border p-2">Customer</th>
+          <th class="border p-2">Kitchen</th>
+          <th class="border p-2">Amount</th>
+          <th class="border p-2">Status</th>
+          <th class="border p-2">Date</th>
+        </tr>
+      </thead>
+      <tbody id="salesTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const table = document.getElementById('salesTable');
+    const token = localStorage.getItem('token');
+    const newSaleBtn = document.getElementById('newSaleBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    if (!token) {
+      window.location.href = '/index.html';
+    }
+
+    newSaleBtn.addEventListener('click', () => window.location.href = '/new-sale.html');
+    logoutBtn.addEventListener('click', () => {
+      localStorage.clear();
+      window.location.href = '/index.html';
+    });
+
+    async function loadSales() {
+      const res = await fetch('/api/get-sales', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+
+      if (!data.length) {
+        table.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-gray-500">No sales yet</td></tr>';
+        return;
+      }
+
+      table.innerHTML = data.map(s => `
+        <tr>
+          <td class="border p-2">${s.customer_name}</td>
+          <td class="border p-2">${s.kitchen}</td>
+          <td class="border p-2">$${s.sale_amount}</td>
+          <td class="border p-2">${s.quote_status}</td>
+          <td class="border p-2">${new Date(s.created_at).toLocaleDateString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    loadSales();
+  </script>
+
+</body>
+</html>
