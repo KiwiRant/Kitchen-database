@@ -3,75 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard | Kitchen Sales Portal</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <title>Dashboard | Kitchen Sales</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="bg-gray-50 min-h-screen">
-
-  <nav class="bg-blue-600 text-white p-4 flex justify-between items-center">
-    <h1 class="text-xl font-bold">Kitchen Sales Dashboard</h1>
-    <div>
-      <button id="newSaleBtn" class="bg-white text-blue-600 px-3 py-1 rounded mr-2">+ New Sale</button>
-      <button id="logoutBtn" class="bg-red-500 px-3 py-1 rounded">Logout</button>
-    </div>
+<body>
+  <nav>
+    <h2>Sales Dashboard</h2>
+    <button id="logoutBtn">Logout</button>
   </nav>
 
-  <div class="p-6">
-    <h2 class="text-2xl font-semibold mb-4">Your Quotes</h2>
-    <table class="w-full border-collapse bg-white shadow rounded">
-      <thead class="bg-gray-100 text-left">
+  <section class="content">
+    <h3>Enter New Sale</h3>
+    <form id="saleForm">
+      <input type="text" id="customer_name" placeholder="Customer Name" required />
+      <input type="text" id="kitchen_model" placeholder="Kitchen Model" required />
+      <input type="number" id="price" placeholder="Price" required />
+      <textarea id="details" placeholder="Additional Details"></textarea>
+      <button type="submit">Save Sale</button>
+    </form>
+
+    <h3>Existing Sales</h3>
+    <table id="salesTable">
+      <thead>
         <tr>
-          <th class="border p-2">Customer</th>
-          <th class="border p-2">Kitchen</th>
-          <th class="border p-2">Amount</th>
-          <th class="border p-2">Status</th>
-          <th class="border p-2">Date</th>
+          <th>Customer</th>
+          <th>Model</th>
+          <th>Price</th>
+          <th>Date</th>
         </tr>
       </thead>
-      <tbody id="salesTable"></tbody>
+      <tbody></tbody>
     </table>
-  </div>
+  </section>
 
   <script>
-    const table = document.getElementById('salesTable');
     const token = localStorage.getItem('token');
-    const newSaleBtn = document.getElementById('newSaleBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
+    if (!token) window.location.href = '/index.html';
 
-    if (!token) {
-      window.location.href = '/index.html';
-    }
-
-    newSaleBtn.addEventListener('click', () => window.location.href = '/new-sale.html');
-    logoutBtn.addEventListener('click', () => {
-      localStorage.clear();
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('token');
       window.location.href = '/index.html';
     });
 
+    // Fetch and display sales
     async function loadSales() {
-      const res = await fetch('/api/get-sales', {
+      const res = await fetch('/api/sales', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const data = await res.json();
-
-      if (!data.length) {
-        table.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-gray-500">No sales yet</td></tr>';
-        return;
-      }
-
-      table.innerHTML = data.map(s => `
-        <tr>
-          <td class="border p-2">${s.customer_name}</td>
-          <td class="border p-2">${s.kitchen}</td>
-          <td class="border p-2">$${s.sale_amount}</td>
-          <td class="border p-2">${s.quote_status}</td>
-          <td class="border p-2">${new Date(s.created_at).toLocaleDateString()}</td>
-        </tr>
-      `).join('');
+      const sales = await res.json();
+      const tbody = document.querySelector('#salesTable tbody');
+      tbody.innerHTML = '';
+      sales.forEach(sale => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${sale.customer_name}</td>
+            <td>${sale.kitchen_model}</td>
+            <td>$${sale.price}</td>
+            <td>${new Date(sale.created_at).toLocaleDateString()}</td>
+          </tr>`;
+      });
     }
+
+    document.getElementById('saleForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const sale = {
+        customer_name: document.getElementById('customer_name').value,
+        kitchen_model: document.getElementById('kitchen_model').value,
+        price: document.getElementById('price').value,
+        details: document.getElementById('details').value,
+      };
+      await fetch('/api/sales', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(sale)
+      });
+      e.target.reset();
+      loadSales();
+    });
 
     loadSales();
   </script>
-
 </body>
 </html>
