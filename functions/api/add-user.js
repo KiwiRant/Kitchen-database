@@ -1,21 +1,47 @@
 export async function onRequestPost({ request, env }) {
-  const { username, password, role, name } = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { username, password, role, name } = body;
 
   if (!username || !password) {
-    return jsonResponse({ success: false, error: "Missing fields" }, { status: 400 });
+    return jsonResponse({ success: false, error: "Missing username or password" }, { status: 400 });
   }
 
   const metadata = await resolveUsersTableMetadata(env.DB);
-  if (!metadata.identifierColumn) {
+
+  if (!metadata.identifier) {
     return jsonResponse(
       { success: false, error: "Users table is missing a username or email column" },
       { status: 500 }
     );
   }
 
-  if (metadata.nameColumn?.required && !name) {
+  if (!metadata.columns.password) {
+    return jsonResponse(
+      { success: false, error: "Users table is missing a password column" },
+      { status: 500 }
+    );
+  }
+
+  if (metadata.columns.name?.required && !name) {
     return jsonResponse(
       { success: false, error: "Name is required" },
+      { status: 400 }
+    );
+  }
+
+  const unsupportedRequiredColumns = metadata.unsupportedRequiredColumns;
+  if (unsupportedRequiredColumns.length) {
+    return jsonResponse(
+      {
+        success: false,
+        error: `Users table has unsupported required column(s): ${unsupportedRequiredColumns.join(", ")}`,
+      },
       { status: 400 }
     );
   }
@@ -23,23 +49,34 @@ export async function onRequestPost({ request, env }) {
   const hash = await hashPassword(password);
 
   try {
-    const columns = [];
-    const values = [];
+    const insertColumns = [];
+    const insertValues = [];
 
-    if (metadata.nameColumn?.exists) {
-      columns.push(metadata.nameColumn.name);
-      values.push(name ?? null);
+    if (metadata.columns.name?.exists && name) {
+      insertColumns.push(metadata.columns.name.name);
+      insertValues.push(name);
     }
 
-    columns.push(metadata.identifierColumn, "password", "role");
-    values.push(username, hash, role || "user");
+    insertColumns.push(metadata.identifier);
+    insertValues.push(username);
 
-    const placeholders = columns.map(() => "?").join(", ");
-    const statement = `INSERT INTO users (${columns.join(", ")}) VALUES (${placeholders})`;
+    insertColumns.push("password");
+    insertValues.push(hash);
 
-    await env.DB.prepare(statement)
-      .bind(...values)
-      .run();
+    if (metadata.columns.role?.exists) {
+      if (role) {
+        insertColumns.push("role");
+        insertValues.push(role);
+      } else if (metadata.columns.role.required || !metadata.columns.role.hasDefault) {
+        insertColumns.push("role");
+        insertValues.push("user");
+      }
+    }
+
+    const placeholders = insertColumns.map(() => "?").join(", ");
+    const statement = `INSERT INTO users (${insertColumns.join(", ")}) VALUES (${placeholders})`;
+
+    await env.DB.prepare(statement).bind(...insertValues).run();
 
     return jsonResponse({ success: true });
   } catch (e) {
@@ -52,24 +89,30 @@ async function resolveUsersTableMetadata(db) {
     .prepare("SELECT name, notnull, dflt_value FROM pragma_table_info('users')")
     .all();
 
-  const identifierColumn = results.find((row) => row.name === "username")
-    ? "username"
-    : results.find((row) => row.name === "email")
-      ? "email"
-      : null;
+  const columns = results.reduce((acc, row) => {
+    acc[row.name] = {
+      name: row.name,
+      exists: true,
+      required: Boolean(row.notnull) && row.dflt_value === null,
+      hasDefault: row.dflt_value !== null,
+    };
+    return acc;
+  }, {});
 
-  const nameInfo = results.find((row) => row.name === "name");
-  const nameColumn = nameInfo
-    ? {
-        name: nameInfo.name,
-        exists: true,
-        required: Boolean(nameInfo.notnull) && nameInfo.dflt_value === null,
-      }
-    : null;
+  const identifier = columns.username ? "username" : columns.email ? "email" : null;
+
+  const supportedColumns = new Set(["id", "created_at", "updated_at", "password", "role", "name"]);
+  if (identifier) supportedColumns.add(identifier);
+
+  const unsupportedRequiredColumns = results
+    .filter((row) => !supportedColumns.has(row.name))
+    .filter((row) => Boolean(row.notnull) && row.dflt_value === null)
+    .map((row) => row.name);
 
   return {
-    identifierColumn,
-    nameColumn,
+    identifier,
+    columns,
+    unsupportedRequiredColumns,
   };
 }
 
