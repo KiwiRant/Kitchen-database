@@ -5,11 +5,19 @@ export async function onRequestPost({ request, env }) {
     return new Response("Missing fields", { status: 400 });
   }
 
+  const identifierColumn = await resolveIdentifierColumn(env.DB);
+  if (!identifierColumn) {
+    return Response.json(
+      { success: false, error: "Users table is missing a username or email column" },
+      { status: 500 }
+    );
+  }
+
   const hash = await hashPassword(password);
 
   try {
     await env.DB.prepare(
-      "INSERT INTO users (username, password, role) VALUES (?, ?, ?)"
+      `INSERT INTO users (${identifierColumn}, password, role) VALUES (?, ?, ?)`
     )
       .bind(username, hash, role || "user")
       .run();
@@ -18,6 +26,19 @@ export async function onRequestPost({ request, env }) {
   } catch (e) {
     return Response.json({ success: false, error: e.message });
   }
+}
+
+async function resolveIdentifierColumn(db) {
+  const { results } = await db
+    .prepare(
+      "SELECT name FROM pragma_table_info('users') WHERE name IN ('username', 'email')"
+    )
+    .all();
+
+  const columns = results.map((row) => row.name);
+  if (columns.includes("username")) return "username";
+  if (columns.includes("email")) return "email";
+  return null;
 }
 
 async function hashPassword(password) {
