@@ -1,1 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen CRM · Quotes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Kitchen CRM</h1>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="sales.html">Sales</a>
+      <a href="quotes.html">Quotes</a>
+      <a href="login.html">Login</a>
+      <a href="create-user.html">Add User</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Create a quote</h2>
+      <p class="description">Select a job to convert its recorded sales into a draft quote.</p>
+      <div id="quote-status" class="status-banner"></div>
+      <form id="quote-form">
+        <div class="grid two-columns">
+          <div>
+            <label for="quote-client">Client</label>
+            <select id="quote-client" required></select>
+          </div>
+          <div>
+            <label for="quote-job">Job</label>
+            <select id="quote-job" required></select>
+          </div>
+        </div>
+        <div style="margin-top: 1rem;">
+          <label for="quote-notes">Notes</label>
+          <textarea id="quote-notes" placeholder="Add optional notes for the client"></textarea>
+        </div>
+        <button type="submit" style="margin-top: 1.5rem;">Generate quote</button>
+      </form>
+    </section>
 
+    <section class="card">
+      <h2>Quotes</h2>
+      <p class="description">All generated quotes remain in draft for editing before sending.</p>
+      <div id="quotes-status" class="status-banner"></div>
+      <div class="table-wrapper">
+        <table id="quotes-table">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Job</th>
+              <th>Total</th>
+              <th>Items</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    const quoteForm = document.getElementById('quote-form');
+    const quoteStatus = document.getElementById('quote-status');
+    const quotesStatus = document.getElementById('quotes-status');
+    const quotesTableBody = document.querySelector('#quotes-table tbody');
+    const clientSelect = document.getElementById('quote-client');
+    const jobSelect = document.getElementById('quote-job');
+
+    let salesByClient = new Map();
+
+    function showStatus(el, message, type = 'info') {
+      el.textContent = message;
+      el.className = `status-banner show ${type}`;
+    }
+
+    function hideStatus(el) {
+      el.textContent = '';
+      el.className = 'status-banner';
+    }
+
+    function currency(value) {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+    }
+
+    function formatDate(value) {
+      return value ? new Date(value).toLocaleString() : '—';
+    }
+
+    function populateJobs(clientId) {
+      const jobs = salesByClient.get(clientId) || [];
+      jobSelect.innerHTML = jobs.length
+        ? jobs.map((job) => `<option value="${job}">${job}</option>`).join('')
+        : '<option value="">No jobs for this client</option>';
+      jobSelect.disabled = !jobs.length;
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `Request failed (${response.status})`);
+      }
+      return data;
+    }
+
+    async function loadClientsAndSales() {
+      showStatus(quoteStatus, 'Loading clients…', 'info');
+      const [clientsData, salesData] = await Promise.all([
+        fetchJson('/api/clients'),
+        fetchJson('/api/sales'),
+      ]);
+
+      const clients = clientsData.clients || [];
+      const sales = salesData.sales || [];
+
+      clientSelect.innerHTML = clients.length
+        ? clients.map((client) => `<option value="${client.id}">${client.name}</option>`).join('')
+        : '<option value="">No clients available</option>';
+
+      salesByClient = new Map();
+      for (const sale of sales) {
+        if (!salesByClient.has(String(sale.clientId))) {
+          salesByClient.set(String(sale.clientId), []);
+        }
+        const jobs = salesByClient.get(String(sale.clientId));
+        if (!jobs.includes(sale.jobName)) {
+          jobs.push(sale.jobName);
+        }
+      }
+
+      if (clients.length) {
+        populateJobs(String(clients[0].id));
+      } else {
+        jobSelect.innerHTML = '<option value="">No jobs</option>';
+        jobSelect.disabled = true;
+      }
+
+      hideStatus(quoteStatus);
+      if (!clients.length) {
+        showStatus(quoteStatus, 'Add a client and sales before generating quotes.', 'info');
+      }
+    }
+
+    async function loadQuotes() {
+      showStatus(quotesStatus, 'Loading quotes…', 'info');
+      const { quotes } = await fetchJson('/api/quote');
+      quotesTableBody.innerHTML = quotes.length
+        ? quotes.map((quote) => `
+            <tr>
+              <td>${quote.clientName || 'Unknown client'}</td>
+              <td>${quote.jobName}</td>
+              <td>${currency(quote.total)}</td>
+              <td>${quote.details.length}</td>
+              <td><span class="badge">${quote.status || 'draft'}</span></td>
+              <td>${formatDate(quote.createdAt)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="6">No quotes yet.</td></tr>';
+      hideStatus(quotesStatus);
+    }
+
+    clientSelect.addEventListener('change', () => {
+      populateJobs(clientSelect.value);
+    });
+
+    quoteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showStatus(quoteStatus, 'Generating quote…', 'info');
+      const payload = {
+        clientId: clientSelect.value,
+        jobName: jobSelect.value,
+        notes: document.getElementById('quote-notes').value,
+      };
+
+      try {
+        await fetchJson('/api/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        showStatus(quoteStatus, 'Quote created successfully.', 'success');
+        await loadQuotes();
+      } catch (error) {
+        showStatus(quoteStatus, error.message, 'error');
+      }
+    });
+
+    (async () => {
+      try {
+        await loadClientsAndSales();
+        await loadQuotes();
+      } catch (error) {
+        showStatus(quoteStatus, error.message, 'error');
+      }
+    })();
+  </script>
+</body>
+</html>
