@@ -2,25 +2,136 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Dashboard</title>
+  <title>Dashboard | Kitchen CRM</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h2>Welcome, <span id="username"></span></h2>
-  <nav>
-    <a href="sales.html">Add Sales</a> |
-    <a href="quotes.html">Quotes</a> |
-    <a href="login.html" onclick="logout()">Logout</a>
-  </nav>
+  <main>
+    <header class="card">
+      <h1>Welcome back, <span id="username"></span></h1>
+      <nav>
+        <a href="sales.html">Sales</a>
+        <a href="quotes.html">Quotes</a>
+        <a href="login.html" id="logoutLink">Logout</a>
+      </nav>
+      <p>Stay on top of your kitchen projects with quick access to sales and quotes.</p>
+    </header>
+
+    <section class="flex">
+      <div class="card">
+        <h2 id="clientCount">0 clients</h2>
+        <p class="badge" id="jobCount">0 jobs tracked</p>
+      </div>
+      <div class="card">
+        <h2 id="salesValue">£0.00</h2>
+        <p class="badge">Total recorded sales</p>
+      </div>
+      <div class="card">
+        <h2 id="quoteCount">0 quotes</h2>
+        <p class="badge" id="quoteValue">£0.00 quoted</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Client files</h2>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Jobs</th>
+              <th>Total sales</th>
+            </tr>
+          </thead>
+          <tbody id="clientTableBody">
+            <tr><td colspan="3">No clients recorded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 
   <script>
     const user = JSON.parse(localStorage.getItem("user"));
-    if (!user) window.location.href = "/login.html";
-    document.getElementById("username").innerText = user.username;
-
-    function logout() {
-      localStorage.removeItem("user");
+    if (!user) {
+      window.location.href = "/login.html";
     }
+
+    document.getElementById("username").textContent = user?.username || "";
+    document.getElementById("logoutLink").addEventListener("click", () => {
+      localStorage.removeItem("user");
+    });
+
+    async function loadDashboard() {
+      const [clientsRes, quotesRes] = await Promise.all([
+        fetch("/api/clients"),
+        fetch("/api/quote"),
+      ]);
+
+      const clientsData = await clientsRes.json().catch(() => ({ success: false, clients: [] }));
+      const quotesData = await quotesRes.json().catch(() => ({ success: false, quotes: [] }));
+
+      const clients = clientsData.success ? clientsData.clients : [];
+      const quotes = quotesData.success ? quotesData.quotes : [];
+
+      const clientCount = clients.length;
+      const jobCount = clients.reduce((acc, client) => acc + client.jobs.length, 0);
+      const totalSales = clients.reduce((sum, client) => {
+        return (
+          sum +
+          client.jobs.reduce((jobSum, job) => jobSum + Number(job.total_amount || 0), 0)
+        );
+      }, 0);
+      const totalQuotes = quotes.length;
+      const quotedValue = quotes.reduce((sum, quote) => sum + Number(quote.total_amount || 0), 0);
+
+      document.getElementById("clientCount").textContent = `${clientCount} client${clientCount === 1 ? "" : "s"}`;
+      document.getElementById("jobCount").textContent = `${jobCount} job${jobCount === 1 ? "" : "s"} tracked`;
+      document.getElementById("salesValue").textContent = `£${totalSales.toFixed(2)}`;
+      document.getElementById("quoteCount").textContent = `${totalQuotes} quote${totalQuotes === 1 ? "" : "s"}`;
+      document.getElementById("quoteValue").textContent = `£${quotedValue.toFixed(2)} quoted`;
+
+      const tbody = document.getElementById("clientTableBody");
+      tbody.innerHTML = "";
+
+      if (!clients.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 3;
+        cell.textContent = "No clients recorded yet.";
+        row.appendChild(cell);
+        tbody.appendChild(row);
+        return;
+      }
+
+      for (const client of clients) {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        const jobsCell = document.createElement("td");
+        const salesCell = document.createElement("td");
+
+        const strong = document.createElement("strong");
+        strong.textContent = client.name;
+        nameCell.appendChild(strong);
+
+        const details = [client.email, client.phone].filter(Boolean);
+        if (details.length) {
+          nameCell.appendChild(document.createElement("br"));
+          const small = document.createElement("small");
+          small.textContent = details.join(" · ");
+          nameCell.appendChild(small);
+        }
+
+        jobsCell.textContent = client.jobs.length;
+        const total = client.jobs.reduce((sum, job) => sum + Number(job.total_amount || 0), 0);
+        salesCell.textContent = `£${total.toFixed(2)}`;
+
+        row.append(nameCell, jobsCell, salesCell);
+        tbody.appendChild(row);
+      }
+    }
+
+    loadDashboard();
   </script>
 </body>
 </html>

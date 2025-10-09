@@ -1,34 +1,76 @@
-export async function onRequestPost({ request, env }) {
-  const { username, password } = await request.json();
+import {
+  getUsersTableMetadata,
+  jsonResponse,
+  parseJsonBody,
+  verifyPassword,
+} from "./_utils.js";
 
-  if (!username || !password) {
-    return new Response("Missing username or password", { status: 400 });
+export async function onRequestPost({ request, env }) {
+  const db = env.DB;
+
+  if (!db) {
+    return jsonResponse(
+      { success: false, message: "Database binding DB is not configured" },
+      { status: 500 }
+    );
   }
 
-  const { results } = await env.DB.prepare(
-    "SELECT * FROM users WHERE username = ?"
-  )
-    .bind(username)
-    .all();
+  let payload;
+  try {
+    payload = await parseJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ success: false, message: "Invalid request body" }, { status: 400 });
+  }
 
-  const user = results[0];
-  if (!user) return Response.json({ success: false, message: "User not found" });
+  const identifier = ((payload.username ?? payload.email) || "").trim();
+  const password = (payload.password ?? "").toString();
 
-  const hash = await hashPassword(password);
-  if (hash !== user.password)
-    return Response.json({ success: false, message: "Invalid credentials" });
+  if (!identifier || !password) {
+    return jsonResponse({ success: false, message: "Missing username or password" }, { status: 400 });
+  }
 
-  return Response.json({
+  let metadata;
+  try {
+    metadata = await getUsersTableMetadata(db);
+  } catch (error) {
+    return jsonResponse(
+      { success: false, message: `Failed to inspect users table: ${error.message}` },
+      { status: 500 }
+    );
+  }
+
+  if (!metadata.identifierColumn) {
+    return jsonResponse(
+      { success: false, message: "Users table is missing login column" },
+      { status: 500 }
+    );
+  }
+
+  let user;
+  try {
+    user = await db
+      .prepare(`SELECT * FROM users WHERE ${metadata.identifierColumn} = ? LIMIT 1`)
+      .bind(identifier)
+      .first();
+  } catch (error) {
+    return jsonResponse({ success: false, message: error.message }, { status: 500 });
+  }
+
+  if (!user) {
+    return jsonResponse({ success: false, message: "User not found" }, { status: 404 });
+  }
+
+  const passwordMatches = await verifyPassword(password, user.password);
+  if (!passwordMatches) {
+    return jsonResponse({ success: false, message: "Invalid credentials" }, { status: 401 });
+  }
+
+  return jsonResponse({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role },
+    user: {
+      id: user.id,
+      username: user.username ?? user.email,
+      role: user.role,
+    },
   });
-}
-
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
 }
