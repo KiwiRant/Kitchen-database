@@ -1,1 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sales | Kitchen CRM</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <header class="card">
+      <h1>Sales</h1>
+      <nav>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="quotes.html">Quotes</a>
+        <a href="login.html" id="logoutLink">Logout</a>
+      </nav>
+      <p>Record sales against client jobs and keep everything grouped in one place.</p>
+    </header>
 
+    <section class="flex">
+      <div class="card">
+        <h2>Record a sale</h2>
+        <form id="saleForm">
+          <label>
+            Client
+            <select id="saleClient" required></select>
+          </label>
+          <label>
+            Job name
+            <input type="text" id="jobName" list="jobSuggestions" placeholder="Kitchen renovation" required />
+            <datalist id="jobSuggestions"></datalist>
+          </label>
+          <label>
+            Description
+            <textarea id="description" rows="3" placeholder="Describe the work completed" required></textarea>
+          </label>
+          <label>
+            Amount
+            <input type="number" id="amount" step="0.01" min="0" placeholder="0.00" required />
+          </label>
+          <label>
+            Sale date
+            <input type="date" id="saleDate" />
+          </label>
+          <button type="submit">Save sale</button>
+          <p id="saleMessage"></p>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Add a client</h2>
+        <form id="clientForm">
+          <input type="text" id="clientName" placeholder="Client name" required />
+          <input type="email" id="clientEmail" placeholder="Email" />
+          <input type="tel" id="clientPhone" placeholder="Phone" />
+          <textarea id="clientAddress" rows="3" placeholder="Address"></textarea>
+          <button type="submit">Create client</button>
+          <p id="clientMessage"></p>
+        </form>
+        <small>Clients and job names are used to group sales when generating quotes.</small>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="flex" style="align-items: center;">
+        <div>
+          <h2>Sales history</h2>
+          <p class="badge" id="salesSummary">Select a client and job to view sales.</p>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Sale date</th>
+              <th>Description</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody id="salesBody">
+            <tr><td colspan="3">No sales to show yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user) {
+      window.location.href = "/login.html";
+    }
+
+    document.getElementById("logoutLink").addEventListener("click", () => {
+      localStorage.removeItem("user");
+    });
+
+    const state = {
+      clients: [],
+      selectedClientId: null,
+    };
+
+    async function loadClients() {
+      const res = await fetch("/api/clients");
+      const data = await res.json().catch(() => ({ success: false }));
+      if (!data.success) {
+        document.getElementById("clientMessage").textContent = "Unable to load clients";
+        return;
+      }
+      state.clients = data.clients;
+      populateClientSelect();
+    }
+
+    function populateClientSelect() {
+      const select = document.getElementById("saleClient");
+      select.innerHTML = "";
+
+      if (!state.clients.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "Create a client first";
+        select.appendChild(option);
+        select.disabled = true;
+        return;
+      }
+
+      select.disabled = false;
+      for (const client of state.clients) {
+        const option = document.createElement("option");
+        option.value = client.id;
+        option.textContent = client.name;
+        select.appendChild(option);
+      }
+
+      if (!state.selectedClientId) {
+        state.selectedClientId = select.value;
+      }
+
+      select.value = state.selectedClientId;
+      updateJobSuggestions();
+      updateSalesSummary();
+    }
+
+    function updateJobSuggestions() {
+      const datalist = document.getElementById("jobSuggestions");
+      datalist.innerHTML = "";
+      const client = state.clients.find(c => String(c.id) === String(state.selectedClientId));
+      if (!client) return;
+      const jobNames = Array.from(new Set(client.jobs.map(job => job.job_name)));
+      for (const name of jobNames) {
+        const option = document.createElement("option");
+        option.value = name;
+        datalist.appendChild(option);
+      }
+    }
+
+    function updateSalesSummary(total = 0, count = 0, jobName = "") {
+      const summary = document.getElementById("salesSummary");
+      if (!state.selectedClientId) {
+        summary.textContent = "Create a client to begin recording sales.";
+        return;
+      }
+      if (!jobName) {
+        summary.textContent = "Choose or enter a job name to see sales.";
+        return;
+      }
+      summary.textContent = `${count} sale${count === 1 ? "" : "s"} recorded · Total £${total.toFixed(2)}`;
+    }
+
+    async function loadSales() {
+      const jobName = document.getElementById("jobName").value.trim();
+      if (!state.selectedClientId || !jobName) {
+        renderSales([]);
+        updateSalesSummary();
+        return;
+      }
+
+      const query = new URLSearchParams({
+        client_id: state.selectedClientId,
+        job_name: jobName,
+      });
+      const res = await fetch(`/api/sales?${query.toString()}`);
+      const data = await res.json().catch(() => ({ success: false, sales: [] }));
+      if (!data.success) {
+        document.getElementById("saleMessage").textContent = "Unable to load sales";
+        return;
+      }
+      renderSales(data.sales);
+    }
+
+    function renderSales(sales) {
+      const tbody = document.getElementById("salesBody");
+      tbody.innerHTML = "";
+
+      if (!sales.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 3;
+        cell.textContent = "No sales to show yet.";
+        row.appendChild(cell);
+        tbody.appendChild(row);
+        updateSalesSummary(0, 0, document.getElementById("jobName").value.trim());
+        return;
+      }
+
+      let total = 0;
+      for (const sale of sales) {
+        total += Number(sale.amount || 0);
+        const row = document.createElement("tr");
+        const dateCell = document.createElement("td");
+        const descriptionCell = document.createElement("td");
+        const amountCell = document.createElement("td");
+
+        const date = sale.sale_date ? new Date(sale.sale_date) : null;
+        dateCell.textContent = date ? date.toLocaleDateString() : "-";
+        descriptionCell.textContent = sale.description;
+        amountCell.textContent = `£${Number(sale.amount).toFixed(2)}`;
+
+        row.append(dateCell, descriptionCell, amountCell);
+        tbody.appendChild(row);
+      }
+
+      updateSalesSummary(total, sales.length, document.getElementById("jobName").value.trim());
+    }
+
+    document.getElementById("saleClient").addEventListener("change", (event) => {
+      state.selectedClientId = event.target.value;
+      updateJobSuggestions();
+      loadSales();
+    });
+
+    document.getElementById("jobName").addEventListener("input", () => {
+      loadSales();
+    });
+
+    document.getElementById("saleForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = document.getElementById("saleMessage");
+      message.textContent = "";
+      message.className = "";
+
+      if (!state.selectedClientId) {
+        message.textContent = "Please create a client before recording sales.";
+        return;
+      }
+
+      const payload = {
+        client_id: state.selectedClientId,
+        job_name: document.getElementById("jobName").value.trim(),
+        description: document.getElementById("description").value.trim(),
+        amount: document.getElementById("amount").value,
+        sale_date: document.getElementById("saleDate").value || null,
+      };
+
+      const res = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({ success: false }));
+      if (!data.success) {
+        message.textContent = data.message || "Unable to save sale.";
+        message.className = "";
+        return;
+      }
+
+      const client = state.clients.find(c => String(c.id) === String(state.selectedClientId));
+      if (client) {
+        const job = client.jobs.find(j => j.job_name === payload.job_name);
+        const amountValue = Number(payload.amount || 0);
+        if (job) {
+          job.sale_count += 1;
+          job.total_amount = Number(job.total_amount || 0) + amountValue;
+        } else {
+          client.jobs.push({ job_name: payload.job_name, sale_count: 1, total_amount: amountValue });
+        }
+      }
+
+      message.textContent = "Sale recorded!";
+      message.className = "success-text";
+      (event.target).reset();
+      updateJobSuggestions();
+      await loadSales();
+    });
+
+    document.getElementById("clientForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = document.getElementById("clientMessage");
+      message.textContent = "";
+      message.className = "";
+
+      const payload = {
+        name: document.getElementById("clientName").value.trim(),
+        email: document.getElementById("clientEmail").value.trim() || null,
+        phone: document.getElementById("clientPhone").value.trim() || null,
+        address: document.getElementById("clientAddress").value.trim() || null,
+      };
+
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({ success: false }));
+      if (!data.success) {
+        message.textContent = data.message || "Unable to save client.";
+        message.className = "";
+        return;
+      }
+
+      message.textContent = "Client added!";
+      message.className = "success-text";
+      event.target.reset();
+      state.selectedClientId = data.client.id;
+      await loadClients();
+      document.getElementById("saleClient").value = state.selectedClientId;
+      updateJobSuggestions();
+      loadSales();
+    });
+
+    loadClients().then(() => {
+      state.selectedClientId = document.getElementById("saleClient").value;
+      loadSales();
+    });
+  </script>
+</body>
+</html>
