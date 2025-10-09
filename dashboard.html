@@ -1,90 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard | Kitchen Sales</title>
-  <link rel="stylesheet" href="styles.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard</title>
+<style>
+body { font-family: Arial; margin: 2rem; background: #f2f2f2; }
+h2 { margin-bottom: 1rem; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; background: #fff; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background: #333; color: #fff; }
+form { background: #fff; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; }
+input, textarea { width: 100%; padding: 0.5rem; margin-top: 0.5rem; }
+button { margin-top: 1rem; padding: 0.5rem 1rem; }
+</style>
 </head>
 <body>
-  <nav>
-    <h2>Sales Dashboard</h2>
-    <button id="logoutBtn">Logout</button>
-  </nav>
+<h2>Sales Dashboard</h2>
 
-  <section class="content">
-    <h3>Enter New Sale</h3>
-    <form id="saleForm">
-      <input type="text" id="customer_name" placeholder="Customer Name" required />
-      <input type="text" id="kitchen_model" placeholder="Kitchen Model" required />
-      <input type="number" id="price" placeholder="Price" required />
-      <textarea id="details" placeholder="Additional Details"></textarea>
-      <button type="submit">Save Sale</button>
-    </form>
+<form id="saleForm">
+<h3>Add New Sale</h3>
+<label>Customer Name<input type="text" name="customer_name" required></label>
+<label>Kitchen Model<input type="text" name="kitchen_model" required></label>
+<label>Price<input type="number" name="price" required></label>
+<label>Details<textarea name="details"></textarea></label>
+<button type="submit">Add Sale</button>
+</form>
 
-    <h3>Existing Sales</h3>
-    <table id="salesTable">
-      <thead>
-        <tr>
-          <th>Customer</th>
-          <th>Model</th>
-          <th>Price</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </section>
+<h3>Existing Sales</h3>
+<table id="salesTable">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Customer</th>
+      <th>Kitchen</th>
+      <th>Price</th>
+      <th>Details</th>
+      <th>Created By</th>
+      <th>Created At</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-  <script>
-    const token = localStorage.getItem('token');
-    if (!token) window.location.href = '/index.html';
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location.href = '/login.html';
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
-      localStorage.removeItem('token');
-      window.location.href = '/index.html';
-    });
+async function fetchSales() {
+  const res = await fetch('/api/sales', { headers: { 'Authorization': 'Bearer ' + token } });
+  const data = await res.json();
+  if (!data.success) { alert(data.message); return; }
 
-    // Fetch and display sales
-    async function loadSales() {
-      const res = await fetch('/api/sales', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const sales = await res.json();
-      const tbody = document.querySelector('#salesTable tbody');
-      tbody.innerHTML = '';
-      sales.forEach(sale => {
-        tbody.innerHTML += `
-          <tr>
-            <td>${sale.customer_name}</td>
-            <td>${sale.kitchen_model}</td>
-            <td>$${sale.price}</td>
-            <td>${new Date(sale.created_at).toLocaleDateString()}</td>
-          </tr>`;
-      });
-    }
+  const tbody = document.querySelector('#salesTable tbody');
+  tbody.innerHTML = '';
+  data.sales.forEach(sale => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${sale.id}</td>
+                    <td>${sale.customer_name}</td>
+                    <td>${sale.kitchen_model}</td>
+                    <td>${sale.price}</td>
+                    <td>${sale.details}</td>
+                    <td>${sale.created_by}</td>
+                    <td>${sale.created_at}</td>`;
+    tbody.appendChild(tr);
+  });
+}
 
-    document.getElementById('saleForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const sale = {
-        customer_name: document.getElementById('customer_name').value,
-        kitchen_model: document.getElementById('kitchen_model').value,
-        price: document.getElementById('price').value,
-        details: document.getElementById('details').value,
-      };
-      await fetch('/api/sales', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(sale)
-      });
-      e.target.reset();
-      loadSales();
-    });
+document.getElementById('saleForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target;
+  const body = {
+    customer_name: form.customer_name.value,
+    kitchen_model: form.kitchen_model.value,
+    price: form.price.value,
+    details: form.details.value
+  };
+  const res = await fetch('/api/sales', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.success) {
+    form.reset();
+    fetchSales();
+  } else alert(data.message);
+});
 
-    loadSales();
-  </script>
+fetchSales();
+</script>
 </body>
 </html>
