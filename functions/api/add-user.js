@@ -1,5 +1,5 @@
 export async function onRequestPost({ request, env }) {
-  const { username, password, role } = await request.json();
+  const { username, password, role, name } = await request.json();
 
   if (!username || !password) {
     return new Response("Missing fields", { status: 400 });

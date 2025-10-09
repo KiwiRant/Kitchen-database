@@ -20,6 +20,7 @@
   <script>
     document.getElementById("createUserForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+      const name = document.getElementById("name").value;
       const username = document.getElementById("username").value;
       const password = document.getElementById("password").value;
       const role = document.getElementById("role").value;
@@ -27,7 +28,7 @@
       const res = await fetch("/api/add-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role })
+        body: JSON.stringify({ name, username, password, role })
       });
 
       const data = await res.json().catch(() => null);
