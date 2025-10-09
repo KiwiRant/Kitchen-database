@@ -5,40 +5,21 @@ export async function onRequestPost({ request, env }) {
     return new Response("Missing fields", { status: 400 });
   }
 
-  const metadata = await resolveUsersTableMetadata(env.DB);
-  if (!metadata.identifierColumn) {
+  const identifierColumn = await resolveIdentifierColumn(env.DB);
+  if (!identifierColumn) {
     return Response.json(
       { success: false, error: "Users table is missing a username or email column" },
       { status: 500 }
     );
   }
 
-  if (metadata.nameColumn?.required && !name) {
-    return Response.json(
-      { success: false, error: "Name is required" },
-      { status: 400 }
-    );
-  }
-
   const hash = await hashPassword(password);
 
   try {
-    const columns = [];
-    const values = [];
-
-    if (metadata.nameColumn?.exists) {
-      columns.push(metadata.nameColumn.name);
-      values.push(name ?? null);
-    }
-
-    columns.push(metadata.identifierColumn, "password", "role");
-    values.push(username, hash, role || "user");
-
-    const placeholders = columns.map(() => "?").join(", ");
-    const statement = `INSERT INTO users (${columns.join(", ")}) VALUES (${placeholders})`;
-
-    await env.DB.prepare(statement)
-      .bind(...values)
+    await env.DB.prepare(
+      `INSERT INTO users (${identifierColumn}, password, role) VALUES (?, ?, ?)`
+    )
+      .bind(username, hash, role || "user")
       .run();
 
     return Response.json({ success: true });
@@ -47,30 +28,17 @@ export async function onRequestPost({ request, env }) {
   }
 }
 
-async function resolveUsersTableMetadata(db) {
+async function resolveIdentifierColumn(db) {
   const { results } = await db
-    .prepare("SELECT name, notnull, dflt_value FROM pragma_table_info('users')")
+    .prepare(
+      "SELECT name FROM pragma_table_info('users') WHERE name IN ('username', 'email')"
+    )
     .all();
 
-  const identifierColumn = results.find((row) => row.name === "username")
-    ? "username"
-    : results.find((row) => row.name === "email")
-      ? "email"
-      : null;
-
-  const nameInfo = results.find((row) => row.name === "name");
-  const nameColumn = nameInfo
-    ? {
-        name: nameInfo.name,
-        exists: true,
-        required: Boolean(nameInfo.notnull) && nameInfo.dflt_value === null,
-      }
-    : null;
-
-  return {
-    identifierColumn,
-    nameColumn,
-  };
+  const columns = results.map((row) => row.name);
+  if (columns.includes("username")) return "username";
+  if (columns.includes("email")) return "email";
+  return null;
 }
 
 async function hashPassword(password) {
