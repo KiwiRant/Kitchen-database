@@ -7,29 +7,17 @@ import {
 } from "./_utils.js";
 
 export async function onRequestPost({ request, env }) {
-  const db = env.DB;
-
-  if (!db) {
-    return jsonResponse(
-      { success: false, error: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
   let payload;
   try {
-    payload = await parseJsonBody(request);
+    payload = await request.json();
   } catch (error) {
-    return jsonResponse(
-      { success: false, error: "Unable to read request body" },
-      { status: 400 }
-    );
+    return jsonResponse({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const identifierInput = ((payload.username ?? payload.email) || "").trim();
+  const identifierInput = (payload.username ?? payload.email ?? "").trim();
   const passwordInput = (payload.password ?? "").toString();
-  const nameInput = isNonEmptyString(payload.name) ? payload.name.trim() : "";
-  const roleInput = isNonEmptyString(payload.role) ? payload.role.trim() : "";
+  const roleInput = (payload.role ?? "").toString().trim();
+  const nameInput = payload.name !== undefined ? `${payload.name}`.trim() : "";
 
   if (!identifierInput || !passwordInput) {
     return jsonResponse(
@@ -38,15 +26,7 @@ export async function onRequestPost({ request, env }) {
     );
   }
 
-  let metadata;
-  try {
-    metadata = await getUsersTableMetadata(db);
-  } catch (error) {
-    return jsonResponse(
-      { success: false, error: `Failed to inspect users table: ${error.message}` },
-      { status: 500 }
-    );
-  }
+  const metadata = await loadUsersTableMetadata(env.DB);
 
   if (!metadata.identifierColumn) {
     return jsonResponse(
@@ -55,63 +35,58 @@ export async function onRequestPost({ request, env }) {
     );
   }
 
-  if (!metadata.passwordColumn) {
+  if (!metadata.columns.password) {
     return jsonResponse(
       { success: false, error: "Users table is missing a password column" },
       { status: 500 }
     );
   }
 
-  if (metadata.unsupportedRequiredColumns.length) {
+  const conflicts = metadata.unsupportedRequiredColumns;
+  if (conflicts.length) {
     return jsonResponse(
       {
         success: false,
-        error: `Unsupported required column(s) on users table: ${metadata.unsupportedRequiredColumns.join(", ")}`,
+        error: `Unsupported required column(s) on users table: ${conflicts.join(", ")}`,
       },
       { status: 400 }
     );
   }
 
-  try {
-    const { results } = await db
-      .prepare(`SELECT 1 FROM users WHERE ${metadata.identifierColumn} = ? LIMIT 1`)
-      .bind(identifierInput)
-      .all();
-    if (results.length) {
-      return jsonResponse(
-        { success: false, error: "A user with that login already exists" },
-        { status: 409 }
-      );
-    }
-  } catch (error) {
+  const existingUser = await findExistingUser(env.DB, metadata.identifierColumn, identifierInput);
+  if (existingUser) {
     return jsonResponse(
-      { success: false, error: `Failed to check for existing user: ${error.message}` },
-      { status: 500 }
+      { success: false, error: "A user with that login already exists" },
+      { status: 409 }
     );
   }
 
   const passwordHash = await hashPassword(passwordInput);
 
-  const insertColumns = [metadata.identifierColumn, "password"];
-  const insertValues = [identifierInput, passwordHash];
+  const insertColumns = [];
+  const insertValues = [];
 
-  if (metadata.columns.name) {
-    const isRequired = metadata.columns.name.required;
-    const value = nameInput || (isRequired ? identifierInput : "");
-    if (isRequired && !value) {
-      return jsonResponse(
-        { success: false, error: "Full name is required" },
-        { status: 400 }
-      );
+  // Required identifier column
+  insertColumns.push(metadata.identifierColumn);
+  insertValues.push(identifierInput);
+
+  // Password column is always required if we reach this point
+  insertColumns.push("password");
+  insertValues.push(passwordHash);
+
+  if (metadata.columns.name?.exists) {
+    const nameValue = nameInput || (metadata.columns.name.required ? identifierInput : "");
+    if (metadata.columns.name.required && !nameValue) {
+      return jsonResponse({ success: false, error: "Full name is required" }, { status: 400 });
     }
-    if (value) {
+    if (nameValue) {
       insertColumns.push(metadata.columns.name.name);
-      insertValues.push(value);
+      insertValues.push(nameValue);
     }
   }
 
-  if (metadata.columns.role) {
-    const roleValue = roleInput || (metadata.columns.role.hasDefault ? "" : "user");
+  if (metadata.columns.role?.exists) {
+    const roleValue = roleInput || (metadata.columns.role.required || !metadata.columns.role.hasDefault ? "user" : "");
     if (metadata.columns.role.required && !roleValue) {
       return jsonResponse({ success: false, error: "Role is required" }, { status: 400 });
     }
@@ -126,7 +101,7 @@ export async function onRequestPost({ request, env }) {
     .join(", ")})`;
 
   try {
-    const result = await db.prepare(statement).bind(...insertValues).run();
+    const result = await env.DB.prepare(statement).bind(...insertValues).run();
     return jsonResponse({
       success: true,
       user: {
@@ -140,4 +115,54 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
+
+async function findExistingUser(db, identifierColumn, identifierValue) {
+  const { results } = await db
+    .prepare(`SELECT 1 FROM users WHERE ${identifierColumn} = ? LIMIT 1`)
+    .bind(identifierValue)
+    .all();
+  return results[0];
+}
+
+async function loadUsersTableMetadata(db) {
+  const { results } = await db
+    .prepare("SELECT name, notnull, dflt_value FROM pragma_table_info('users')")
+    .all();
+
+  const columns = results.reduce((acc, row) => {
+    acc[row.name] = {
+      name: row.name,
+      exists: true,
+      required: Boolean(row.notnull) && row.dflt_value === null,
+      hasDefault: row.dflt_value !== null,
+    };
+    return acc;
+  }, {});
+
+  const identifierColumn = columns.username ? "username" : columns.email ? "email" : null;
+
+  const supported = new Set(["id", "password", "role", "name", "created_at", "updated_at"]);
+  if (identifierColumn) supported.add(identifierColumn);
+
+  const unsupportedRequiredColumns = results
+    .filter((column) => !supported.has(column.name))
+    .filter((column) => Boolean(column.notnull) && column.dflt_value === null)
+    .map((column) => column.name);
+
+  return { columns, identifierColumn, unsupportedRequiredColumns };
+}
+
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function jsonResponse(data, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(data), { ...init, headers });
 }

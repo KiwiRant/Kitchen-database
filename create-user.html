@@ -25,7 +25,6 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       resultEl.textContent = "Creating user...";
-      resultEl.className = "";
 
       const name = document.getElementById("name").value.trim();
       const username = document.getElementById("username").value.trim();
@@ -41,17 +40,15 @@
 
         const data = await response.json().catch(() => null);
 
-        if (!response.ok || !data?.success) {
+        if (response.ok && data?.success) {
+          form.reset();
+          resultEl.textContent = `User created for ${data.user?.username || username}.`;
+        } else {
           const message = data?.error || data?.message || `Request failed with status ${response.status}`;
-          throw new Error(message);
+          resultEl.textContent = `Error: ${message}`;
         }
-
-        form.reset();
-        resultEl.textContent = `User created for ${data.user?.username || username}.`;
-        resultEl.className = "success";
       } catch (error) {
         resultEl.textContent = `Error: ${error.message}`;
-        resultEl.className = "error";
       }
     });
   </script>

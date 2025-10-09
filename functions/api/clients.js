@@ -1,5 +1,3 @@
-import { jsonResponse, parseJsonBody } from "./_utils.js";
-
 export async function onRequest({ request, env }) {
   if (request.method === "GET") {
     return handleGet(env);
@@ -9,17 +7,10 @@ export async function onRequest({ request, env }) {
     return handlePost(env, request);
   }
 
-  return jsonResponse({ success: false, message: "Method Not Allowed" }, { status: 405 });
+  return new Response("Method Not Allowed", { status: 405 });
 }
 
 async function handleGet(env) {
-  if (!env.DB) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
   const { results } = await env.DB.prepare(
     `SELECT c.id,
             c.name,
@@ -65,28 +56,24 @@ async function handleGet(env) {
     }
   }
 
-  return jsonResponse({
+  return Response.json({
     success: true,
     clients: Array.from(clientsMap.values()),
   });
 }
 
 async function handlePost(env, request) {
-  if (!env.DB) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
-  const body = await parseJsonBody(request).catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : null;
   const phone = typeof body.phone === "string" ? body.phone.trim() : null;
   const address = typeof body.address === "string" ? body.address.trim() : null;
 
   if (!name) {
-    return jsonResponse({ success: false, message: "Client name is required" }, { status: 400 });
+    return Response.json(
+      { success: false, message: "Client name is required" },
+      { status: 400 }
+    );
   }
 
   try {
@@ -96,7 +83,7 @@ async function handlePost(env, request) {
       .bind(name, email, phone, address)
       .run();
 
-    return jsonResponse({
+    return Response.json({
       success: true,
       client: {
         id: result.meta.last_row_id,
@@ -107,7 +94,7 @@ async function handlePost(env, request) {
       },
     });
   } catch (error) {
-    return jsonResponse(
+    return Response.json(
       { success: false, message: "Unable to create client", error: error.message },
       { status: 500 }
     );

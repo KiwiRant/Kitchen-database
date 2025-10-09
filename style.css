@@ -133,16 +133,6 @@ table tbody tr:hover {
   overflow-x: auto;
 }
 
-.success {
-  color: #0f7a51;
-  font-weight: 600;
-}
-
-.error {
-  color: #c92a2a;
-  font-weight: 600;
-}
-
 .status-pill {
   display: inline-flex;
   align-items: center;

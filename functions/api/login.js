@@ -6,61 +6,44 @@ import {
 } from "./_utils.js";
 
 export async function onRequestPost({ request, env }) {
-  const db = env.DB;
-
-  if (!db) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
   let payload;
   try {
-    payload = await parseJsonBody(request);
+    payload = await request.json();
   } catch (error) {
-    return jsonResponse({ success: false, message: "Invalid request body" }, { status: 400 });
+    return jsonResponse({ success: false, message: "Invalid JSON body" }, { status: 400 });
   }
 
-  const identifier = ((payload.username ?? payload.email) || "").trim();
+  const username = (payload.username ?? payload.email ?? "").toString().trim();
   const password = (payload.password ?? "").toString();
 
-  if (!identifier || !password) {
+  if (!username || !password) {
     return jsonResponse({ success: false, message: "Missing username or password" }, { status: 400 });
   }
 
-  let metadata;
-  try {
-    metadata = await getUsersTableMetadata(db);
-  } catch (error) {
-    return jsonResponse(
-      { success: false, message: `Failed to inspect users table: ${error.message}` },
-      { status: 500 }
-    );
-  }
-
-  if (!metadata.identifierColumn) {
+  const identifierColumn = await resolveIdentifierColumn(env.DB);
+  if (!identifierColumn) {
     return jsonResponse(
       { success: false, message: "Users table is missing login column" },
       { status: 500 }
     );
   }
 
-  let user;
+  let results;
   try {
-    user = await db
-      .prepare(`SELECT * FROM users WHERE ${metadata.identifierColumn} = ? LIMIT 1`)
-      .bind(identifier)
-      .first();
+    ({ results } = await env.DB.prepare(
+      `SELECT * FROM users WHERE ${identifierColumn} = ?`
+    )
+      .bind(username)
+      .all());
   } catch (error) {
     return jsonResponse({ success: false, message: error.message }, { status: 500 });
   }
 
-  if (!user) {
-    return jsonResponse({ success: false, message: "User not found" }, { status: 404 });
-  }
+  const user = results[0];
+  if (!user) return jsonResponse({ success: false, message: "User not found" }, { status: 404 });
 
-  const passwordMatches = await verifyPassword(password, user.password);
+  const hash = await hashPassword(password);
+  const passwordMatches = hash === user.password || password === user.password;
   if (!passwordMatches) {
     return jsonResponse({ success: false, message: "Invalid credentials" }, { status: 401 });
   }
@@ -73,4 +56,32 @@ export async function onRequestPost({ request, env }) {
       role: user.role,
     },
   });
+}
+
+async function resolveIdentifierColumn(db) {
+  const { results } = await db
+    .prepare(
+      "SELECT name FROM pragma_table_info('users') WHERE name IN ('username', 'email')"
+    )
+    .all();
+
+  const columns = results.map((row) => row.name);
+  if (columns.includes("username")) return "username";
+  if (columns.includes("email")) return "email";
+  return null;
+}
+
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function jsonResponse(data, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(data), { ...init, headers });
 }

@@ -1,5 +1,3 @@
-import { jsonResponse, parseJsonBody } from "./_utils.js";
-
 export async function onRequest({ request, env }) {
   if (request.method === "GET") {
     return handleGet(env, request);
@@ -9,17 +7,10 @@ export async function onRequest({ request, env }) {
     return handlePost(env, request);
   }
 
-  return jsonResponse({ success: false, message: "Method Not Allowed" }, { status: 405 });
+  return new Response("Method Not Allowed", { status: 405 });
 }
 
 async function handleGet(env, request) {
-  if (!env.DB) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
   const url = new URL(request.url);
   const clientId = url.searchParams.get("client_id");
   const jobName = url.searchParams.get("job_name");
@@ -52,29 +43,22 @@ async function handleGet(env, request) {
   }
 
   const { results } = await statement.all();
-  const quotes = results.map((row) => ({
+  const quotes = results.map(row => ({
     ...row,
     items: safeJsonParse(row.items_json),
   }));
 
-  return jsonResponse({ success: true, quotes });
+  return Response.json({ success: true, quotes });
 }
 
 async function handlePost(env, request) {
-  if (!env.DB) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
-  const body = await parseJsonBody(request).catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
   const clientId = body.client_id;
   const jobName = typeof body.job_name === "string" ? body.job_name.trim() : "";
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
 
   if (!clientId || !jobName) {
-    return jsonResponse(
+    return Response.json(
       { success: false, message: "client_id and job_name are required" },
       { status: 400 }
     );
@@ -87,7 +71,10 @@ async function handlePost(env, request) {
     .first();
 
   if (!clientExists) {
-    return jsonResponse({ success: false, message: "Client not found" }, { status: 404 });
+    return Response.json(
+      { success: false, message: "Client not found" },
+      { status: 404 }
+    );
   }
 
   const { results: sales } = await env.DB.prepare(
@@ -100,7 +87,7 @@ async function handlePost(env, request) {
     .all();
 
   if (!sales.length) {
-    return jsonResponse(
+    return Response.json(
       { success: false, message: "No sales found for this client and job" },
       { status: 400 }
     );
@@ -116,7 +103,7 @@ async function handlePost(env, request) {
       .bind(clientId, jobName, totalAmount, notes, itemsJson)
       .run();
 
-    return jsonResponse({
+    return Response.json({
       success: true,
       quote: {
         id: result.meta.last_row_id,
@@ -128,7 +115,7 @@ async function handlePost(env, request) {
       },
     });
   } catch (error) {
-    return jsonResponse(
+    return Response.json(
       { success: false, message: "Unable to create quote", error: error.message },
       { status: 500 }
     );

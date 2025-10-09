@@ -1,5 +1,3 @@
-import { jsonResponse, parseJsonBody } from "./_utils.js";
-
 export async function onRequest({ request, env }) {
   if (request.method === "GET") {
     return handleGet(env, request);
@@ -9,17 +7,10 @@ export async function onRequest({ request, env }) {
     return handlePost(env, request);
   }
 
-  return jsonResponse({ success: false, message: "Method Not Allowed" }, { status: 405 });
+  return new Response("Method Not Allowed", { status: 405 });
 }
 
 async function handleGet(env, request) {
-  if (!env.DB) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
   const url = new URL(request.url);
   const clientId = url.searchParams.get("client_id");
   const jobName = url.searchParams.get("job_name");
@@ -53,26 +44,20 @@ async function handleGet(env, request) {
 
   const { results } = await statement.all();
 
-  return jsonResponse({ success: true, sales: results });
+  return Response.json({ success: true, sales: results });
 }
 
 async function handlePost(env, request) {
-  if (!env.DB) {
-    return jsonResponse(
-      { success: false, message: "Database binding DB is not configured" },
-      { status: 500 }
-    );
-  }
-
-  const body = await parseJsonBody(request).catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
   const clientId = body.client_id;
   const jobName = typeof body.job_name === "string" ? body.job_name.trim() : "";
-  const description = typeof body.description === "string" ? body.description.trim() : "";
+  const description =
+    typeof body.description === "string" ? body.description.trim() : "";
   const amount = Number(body.amount);
   const saleDate = body.sale_date ? new Date(body.sale_date) : new Date();
 
   if (!clientId || !jobName || !description || Number.isNaN(amount)) {
-    return jsonResponse(
+    return Response.json(
       {
         success: false,
         message: "client_id, job_name, description and amount are required",
@@ -82,7 +67,7 @@ async function handlePost(env, request) {
   }
 
   if (amount < 0) {
-    return jsonResponse(
+    return Response.json(
       { success: false, message: "Amount must be greater than or equal to 0" },
       { status: 400 }
     );
@@ -97,7 +82,7 @@ async function handlePost(env, request) {
       .bind(clientId, jobName, description, amount, saleDateString)
       .run();
 
-    return jsonResponse({
+    return Response.json({
       success: true,
       sale: {
         id: result.meta.last_row_id,
@@ -109,7 +94,7 @@ async function handlePost(env, request) {
       },
     });
   } catch (error) {
-    return jsonResponse(
+    return Response.json(
       { success: false, message: "Unable to record sale", error: error.message },
       { status: 500 }
     );
