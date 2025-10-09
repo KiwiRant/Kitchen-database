@@ -1,4 +1,51 @@
 :root {
+  --bg: #f5f6fa;
+  --card-bg: #ffffff;
+  --primary: #2b7dfa;
+  --primary-dark: #1f5fb8;
+  --border: #dfe4ea;
+  --text: #1f2a44;
+  --muted: #5f6b86;
+  --success: #2ecc71;
+  --danger: #e74c3c;
+  --warning: #f39c12;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+header {
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
   color-scheme: light;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background-color: #f4f5f7;
@@ -35,6 +82,19 @@ a:hover {
 nav {
   display: flex;
   gap: 1rem;
+}
+
+main {
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 0 2rem 3rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   margin-bottom: 2rem;
 }
 
@@ -50,6 +110,29 @@ nav a {
   margin-bottom: 2rem;
 }
 
+.card h2 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: 1.3rem;
+}
+
+.card p.description {
+  margin-top: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.5rem;
 form {
   display: grid;
   gap: 0.75rem;
@@ -65,6 +148,13 @@ label {
 input,
 select,
 textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fbfcfe;
+  color: var(--text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 0.65rem 0.8rem;
@@ -76,6 +166,65 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(43, 125, 250, 0.18);
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+button {
+  background: var(--primary);
+  color: #fff;
+  padding: 0.65rem 1.2rem;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: #eef2f9;
+  color: var(--text);
+}
+
+.status-banner {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  display: none;
+  font-weight: 500;
+}
+
+.status-banner.show {
+  display: block;
+}
+
+.status-banner.success {
+  background: rgba(46, 204, 113, 0.15);
+  color: var(--success);
+}
+
+.status-banner.error {
+  background: rgba(231, 76, 60, 0.15);
+  color: var(--danger);
+}
+
+.status-banner.info {
+  background: rgba(52, 152, 219, 0.15);
+  color: var(--primary);
   border-color: #0b7285;
   outline: none;
   box-shadow: 0 0 0 3px rgba(11, 114, 133, 0.15);
@@ -133,6 +282,84 @@ table tbody tr:hover {
   overflow-x: auto;
 }
 
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+thead {
+  background: #f0f4fb;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  background: rgba(43, 125, 250, 0.1);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.grid.two-columns {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.summary-metric {
+  padding: 1.25rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(43, 125, 250, 0.08), rgba(43, 125, 250, 0.02));
+}
+
+.summary-metric h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.summary-metric p {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  main {
+    padding: 0 1.25rem 2rem;
+  }
+
+  table {
+    font-size: 0.9rem;
 .status-pill {
   display: inline-flex;
   align-items: center;
