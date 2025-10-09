@@ -5,8 +5,16 @@ export async function onRequestPost({ request, env }) {
     return new Response("Missing username or password", { status: 400 });
   }
 
+  const identifierColumn = await resolveIdentifierColumn(env.DB);
+  if (!identifierColumn) {
+    return Response.json(
+      { success: false, message: "Users table is missing login column" },
+      { status: 500 }
+    );
+  }
+
   const { results } = await env.DB.prepare(
-    "SELECT * FROM users WHERE username = ?"
+    `SELECT * FROM users WHERE ${identifierColumn} = ?`
   )
     .bind(username)
     .all();
@@ -20,8 +28,25 @@ export async function onRequestPost({ request, env }) {
 
   return Response.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role },
+    user: {
+      id: user.id,
+      username: user.username ?? user.email,
+      role: user.role,
+    },
   });
+}
+
+async function resolveIdentifierColumn(db) {
+  const { results } = await db
+    .prepare(
+      "SELECT name FROM pragma_table_info('users') WHERE name IN ('username', 'email')"
+    )
+    .all();
+
+  const columns = results.map((row) => row.name);
+  if (columns.includes("username")) return "username";
+  if (columns.includes("email")) return "email";
+  return null;
 }
 
 async function hashPassword(password) {
