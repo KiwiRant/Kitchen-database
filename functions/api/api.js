@@ -1,4 +1,4 @@
-import { jwtVerify, SignJWT } from 'jose';
+import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcrypt';
 
 export async function onRequest(context) {
@@ -15,15 +15,7 @@ export async function onRequest(context) {
   if (pathname === '/api/add-user' && request.method === 'POST') {
     const auth = await verifyAuth(request, env);
     if (!auth.ok) return auth.response;
-
-    const { name, email, role, password } = await request.json();
-    const hashed = await bcrypt.hash(password, 10); // hash password
-
-    await env.DB.prepare(
-      `INSERT INTO users (name, email, role, password) VALUES (?, ?, ?, ?)`
-    ).bind(name, email, role, hashed).run();
-
-    return json({ success: true, message: 'User created' });
+    return handleAddUser(request, env, auth.user);
   }
 
   // --- SALES ---
@@ -53,24 +45,36 @@ export async function onRequest(context) {
 async function handleLogin(request, env) {
   const { email, password } = await request.json();
 
-  // Fetch user by email
   const user = await env.DB.prepare(
     `SELECT * FROM users WHERE email = ?`
   ).bind(email).first();
 
   if (!user) return json({ success: false, message: 'Invalid credentials' }, 401);
 
-  // Compare hashed password
   const match = await bcrypt.compare(password, user.password);
   if (!match) return json({ success: false, message: 'Invalid credentials' }, 401);
 
-  // Generate JWT token
   const token = await new SignJWT({ email, role: user.role })
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('2h')
     .sign(new TextEncoder().encode(env.JWT_SECRET));
 
   return json({ success: true, token });
+}
+
+// --------------------
+// ADD USER HANDLER (admin)
+// --------------------
+async function handleAddUser(request, env, authUserEmail) {
+  const { name, email, role, password } = await request.json();
+
+  const hashed = await bcrypt.hash(password, 10);
+
+  await env.DB.prepare(
+    `INSERT INTO users (name, email, role, password) VALUES (?, ?, ?, ?)`
+  ).bind(name, email, role, hashed).run();
+
+  return json({ success: true, message: 'User created' });
 }
 
 // --------------------
@@ -88,7 +92,7 @@ async function verifyAuth(request, env) {
       token,
       new TextEncoder().encode(env.JWT_SECRET)
     );
-    return { ok: true, user: payload.email };
+    return { ok: true, user: payload.email, role: payload.role };
   } catch {
     return { ok: false, response: json({ error: 'Invalid token' }, 401) };
   }
@@ -137,7 +141,7 @@ async function addQuote(request, env, username) {
 }
 
 // --------------------
-// HELPER
+// HELPER FUNCTION
 // --------------------
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
