@@ -1,32 +1,47 @@
 export async function onRequestPost({ request, env }) {
-  const { username, password } = await request.json();
+  let payload;
+  try {
+    payload = await request.json();
+  } catch (error) {
+    return jsonResponse({ success: false, message: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const username = (payload.username ?? payload.email ?? "").toString().trim();
+  const password = (payload.password ?? "").toString();
 
   if (!username || !password) {
-    return new Response("Missing username or password", { status: 400 });
+    return jsonResponse({ success: false, message: "Missing username or password" }, { status: 400 });
   }
 
   const identifierColumn = await resolveIdentifierColumn(env.DB);
   if (!identifierColumn) {
-    return Response.json(
+    return jsonResponse(
       { success: false, message: "Users table is missing login column" },
       { status: 500 }
     );
   }
 
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM users WHERE ${identifierColumn} = ?`
-  )
-    .bind(username)
-    .all();
+  let results;
+  try {
+    ({ results } = await env.DB.prepare(
+      `SELECT * FROM users WHERE ${identifierColumn} = ?`
+    )
+      .bind(username)
+      .all());
+  } catch (error) {
+    return jsonResponse({ success: false, message: error.message }, { status: 500 });
+  }
 
   const user = results[0];
-  if (!user) return Response.json({ success: false, message: "User not found" });
+  if (!user) return jsonResponse({ success: false, message: "User not found" }, { status: 404 });
 
   const hash = await hashPassword(password);
-  if (hash !== user.password)
-    return Response.json({ success: false, message: "Invalid credentials" });
+  const passwordMatches = hash === user.password || password === user.password;
+  if (!passwordMatches) {
+    return jsonResponse({ success: false, message: "Invalid credentials" }, { status: 401 });
+  }
 
-  return Response.json({
+  return jsonResponse({
     success: true,
     user: {
       id: user.id,
@@ -56,4 +71,10 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(hashBuffer))
     .map(b => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function jsonResponse(data, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(data), { ...init, headers });
 }

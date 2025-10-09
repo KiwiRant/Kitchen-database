@@ -7,6 +7,7 @@
 <body>
   <h2>Create User</h2>
   <form id="createUserForm">
+    <input type="text" id="name" placeholder="Full Name" required><br>
     <input type="text" id="username" placeholder="Username or Email" required><br>
     <input type="password" id="password" placeholder="Password" required><br>
     <select id="role">
@@ -15,24 +16,40 @@
     </select><br>
     <button type="submit">Create User</button>
   </form>
-  <p id="result"></p>
+  <p id="result" role="status"></p>
 
   <script>
-    document.getElementById("createUserForm").addEventListener("submit", async (e) => {
+    const form = document.getElementById("createUserForm");
+    const resultEl = document.getElementById("result");
+
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const name = document.getElementById("name").value;
-      const username = document.getElementById("username").value;
+      resultEl.textContent = "Creating user...";
+
+      const name = document.getElementById("name").value.trim();
+      const username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value;
       const role = document.getElementById("role").value;
 
-      const res = await fetch("/api/add-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, username, password, role })
-      });
+      try {
+        const response = await fetch("/api/add-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, username, password, role })
+        });
 
-      const data = await res.json().catch(() => null);
-      document.getElementById("result").innerText = data?.success ? "User created!" : "Error: " + (data?.error || "Failed");
+        const data = await response.json().catch(() => null);
+
+        if (response.ok && data?.success) {
+          form.reset();
+          resultEl.textContent = `User created for ${data.user?.username || username}.`;
+        } else {
+          const message = data?.error || data?.message || `Request failed with status ${response.status}`;
+          resultEl.textContent = `Error: ${message}`;
+        }
+      } catch (error) {
+        resultEl.textContent = `Error: ${error.message}`;
+      }
     });
   </script>
 </body>
