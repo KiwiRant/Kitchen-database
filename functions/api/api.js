@@ -11,6 +11,21 @@ export async function onRequest(context) {
     return handleLogin(request, env);
   }
 
+  // --- ADD USER (admin only) ---
+  if (pathname === '/api/add-user' && request.method === 'POST') {
+    const auth = await verifyAuth(request, env);
+    if (!auth.ok) return auth.response;
+
+    const { name, email, role, password } = await request.json();
+    const hashed = await bcrypt.hash(password, 10); // hash password
+
+    await env.DB.prepare(
+      `INSERT INTO users (name, email, role, password) VALUES (?, ?, ?, ?)`
+    ).bind(name, email, role, hashed).run();
+
+    return json({ success: true, message: 'User created' });
+  }
+
   // --- SALES ---
   if (pathname === '/api/sales') {
     const auth = await verifyAuth(request, env);
@@ -29,26 +44,11 @@ export async function onRequest(context) {
     if (request.method === 'POST') return addQuote(request, env, auth.user);
   }
 
-  // --- ADD USER (optional admin endpoint) ---
-  if (pathname === '/api/add-user' && request.method === 'POST') {
-    const auth = await verifyAuth(request, env);
-    if (!auth.ok) return auth.response;
-
-    const { name, email, role, password } = await request.json();
-    const hashed = await bcrypt.hash(password, 10);
-
-    await env.DB.prepare(
-      `INSERT INTO users (name, email, role, password) VALUES (?, ?, ?, ?)`
-    ).bind(name, email, role, hashed).run();
-
-    return json({ success: true, message: 'User created' });
-  }
-
   return new Response('Not found', { status: 404 });
 }
 
 // --------------------
-// LOGIN HANDLER (email + password)
+// LOGIN HANDLER
 // --------------------
 async function handleLogin(request, env) {
   const { email, password } = await request.json();
@@ -60,7 +60,7 @@ async function handleLogin(request, env) {
 
   if (!user) return json({ success: false, message: 'Invalid credentials' }, 401);
 
-  // Check password
+  // Compare hashed password
   const match = await bcrypt.compare(password, user.password);
   if (!match) return json({ success: false, message: 'Invalid credentials' }, 401);
 
