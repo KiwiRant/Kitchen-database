@@ -1,3 +1,11 @@
+import {
+  getUsersTableMetadata,
+  hashPassword,
+  isNonEmptyString,
+  jsonResponse,
+  parseJsonBody,
+} from "./_utils.js";
+
 export async function onRequestPost({ request, env }) {
   let payload;
   try {
@@ -107,7 +115,6 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
-}
 
 async function findExistingUser(db, identifierColumn, identifierValue) {
   const { results } = await db

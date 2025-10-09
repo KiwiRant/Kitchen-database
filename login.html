@@ -17,26 +17,43 @@
   </div>
 
   <script>
-    document.querySelector("#loginForm").addEventListener("submit", async (e) => {
+    const form = document.querySelector("#loginForm");
+    const errorEl = document.getElementById("error");
+
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const username = document.querySelector("#username").value;
+      errorEl.textContent = "";
+      errorEl.className = "";
+
+      const username = document.querySelector("#username").value.trim();
       const password = document.querySelector("#password").value;
 
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+      const submitBtn = form.querySelector("button[type='submit']");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in...";
 
-      const data = await res.json().catch(() => null);
+      try {
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
 
-      if (!data || !data.success) {
-        document.getElementById("error").innerText = data?.message || "Login failed";
-        return;
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.message || `Login failed with status ${res.status}`);
+        }
+
+        localStorage.setItem("user", JSON.stringify(data.user));
+        window.location.href = "/dashboard.html";
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.className = "error";
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Login";
       }
-
-      localStorage.setItem("user", JSON.stringify(data.user));
-      window.location.href = "/dashboard.html";
     });
   </script>
 </body>
