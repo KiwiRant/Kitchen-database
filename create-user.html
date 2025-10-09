@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Create User</title>
+</head>
+<body>
+  <h2>Create User</h2>
+  <form id="createUserForm">
+    <input type="text" id="username" placeholder="Username" required><br>
+    <input type="password" id="password" placeholder="Password" required><br>
+    <select id="role">
+      <option value="admin">Admin</option>
+      <option value="user">User</option>
+    </select><br>
+    <button type="submit">Create User</button>
+  </form>
+  <p id="result"></p>
+
+  <script>
+    document.getElementById("createUserForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const role = document.getElementById("role").value;
+
+      const res = await fetch("/api/add-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, role })
+      });
+
+      const data = await res.json().catch(() => null);
+      document.getElementById("result").innerText = data?.success ? "User created!" : "Error: " + (data?.error || "Failed");
+    });
+  </script>
+</body>
+</html>
