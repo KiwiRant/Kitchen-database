@@ -1,1 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen CRM · Sales</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Kitchen CRM</h1>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="sales.html">Sales</a>
+      <a href="quotes.html">Quotes</a>
+      <a href="login.html">Login</a>
+      <a href="create-user.html">Add User</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Record a sale</h2>
+      <p class="description">Log work completed for a client to keep job totals up to date.</p>
+      <div id="sale-status" class="status-banner"></div>
+      <form id="sale-form">
+        <div class="grid two-columns">
+          <div>
+            <label for="clientId">Client</label>
+            <select id="clientId" name="clientId" required></select>
+          </div>
+          <div>
+            <label for="jobName">Job name</label>
+            <input id="jobName" name="jobName" placeholder="Main showroom renovation" required>
+          </div>
+        </div>
+        <div style="margin-top: 1rem;">
+          <label for="description">Description</label>
+          <input id="description" name="description" placeholder="Installed countertops" required>
+        </div>
+        <div class="grid two-columns" style="margin-top: 1rem;">
+          <div>
+            <label for="quantity">Quantity</label>
+            <input type="number" id="quantity" name="quantity" min="1" step="0.01" value="1" required>
+          </div>
+          <div>
+            <label for="unitPrice">Unit price</label>
+            <input type="number" id="unitPrice" name="unitPrice" min="0" step="0.01" value="0" required>
+          </div>
+        </div>
+        <button type="submit" style="margin-top: 1.5rem;">Save sale</button>
+      </form>
+    </section>
 
+    <section class="card">
+      <h2>Sales history</h2>
+      <p class="description">All recorded items grouped by client and job.</p>
+      <div id="history-status" class="status-banner"></div>
+      <div class="table-wrapper">
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Job</th>
+              <th>Description</th>
+              <th>Quantity</th>
+              <th>Unit price</th>
+              <th>Total</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    const saleForm = document.getElementById('sale-form');
+    const saleStatus = document.getElementById('sale-status');
+    const historyStatus = document.getElementById('history-status');
+    const clientSelect = document.getElementById('clientId');
+    const historyTableBody = document.querySelector('#history-table tbody');
+
+    function showStatus(el, message, type = 'info') {
+      el.textContent = message;
+      el.className = `status-banner show ${type}`;
+    }
+
+    function hideStatus(el) {
+      el.textContent = '';
+      el.className = 'status-banner';
+    }
+
+    function currency(value) {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+    }
+
+    function formatDate(value) {
+      return value ? new Date(value).toLocaleString() : '—';
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `Request failed (${response.status})`);
+      }
+      return data;
+    }
+
+    async function loadClients() {
+      showStatus(saleStatus, 'Loading clients…', 'info');
+      const { clients } = await fetchJson('/api/clients');
+      clientSelect.innerHTML = clients.length
+        ? clients.map((client) => `<option value="${client.id}">${client.name}</option>`).join('')
+        : '<option value="">No clients yet</option>';
+      hideStatus(saleStatus);
+      if (!clients.length) {
+        showStatus(saleStatus, 'Add a client from the dashboard before recording sales.', 'info');
+      }
+    }
+
+    async function loadSales() {
+      showStatus(historyStatus, 'Loading sales…', 'info');
+      const { sales } = await fetchJson('/api/sales');
+      historyTableBody.innerHTML = sales.length
+        ? sales.map((sale) => `
+            <tr>
+              <td>${sale.clientName || 'Unknown client'}</td>
+              <td>${sale.jobName}</td>
+              <td>${sale.description}</td>
+              <td>${Number(sale.quantity).toLocaleString()}</td>
+              <td>${currency(sale.unitPrice)}</td>
+              <td>${currency(sale.total)}</td>
+              <td>${formatDate(sale.createdAt)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="7">No sales recorded yet.</td></tr>';
+      hideStatus(historyStatus);
+    }
+
+    saleForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showStatus(saleStatus, 'Saving sale…', 'info');
+      const payload = {
+        clientId: saleForm.clientId.value,
+        jobName: saleForm.jobName.value,
+        description: saleForm.description.value,
+        quantity: saleForm.quantity.value,
+        unitPrice: saleForm.unitPrice.value,
+      };
+
+      try {
+        await fetchJson('/api/sales', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        showStatus(saleStatus, 'Sale saved successfully.', 'success');
+        saleForm.reset();
+        loadSales();
+      } catch (error) {
+        showStatus(saleStatus, error.message, 'error');
+      }
+    });
+
+    (async () => {
+      try {
+        await loadClients();
+        await loadSales();
+      } catch (error) {
+        showStatus(saleStatus, error.message, 'error');
+      }
+    })();
+  </script>
+</body>
+</html>

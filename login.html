@@ -1,42 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Login</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen CRM · Sign in</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="login-box">
-    <h2>Login</h2>
-    <form id="loginForm">
-      <input type="text" id="username" placeholder="Username" required />
-      <input type="password" id="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-    </form>
-    <p id="error"></p>
-  </div>
-
+  <header>
+    <h1>Kitchen CRM</h1>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="sales.html">Sales</a>
+      <a href="quotes.html">Quotes</a>
+      <a href="create-user.html">Add User</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Sign in</h2>
+      <p class="description">Use your username or email address to access the workspace.</p>
+      <div id="login-status" class="status-banner"></div>
+      <form id="login-form">
+        <div class="field">
+          <label for="identifier">Username or email</label>
+          <input type="text" id="identifier" name="identifier" autocomplete="username" required>
+        </div>
+        <div class="field" style="margin-top: 1rem;">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" style="margin-top: 1.5rem;">Sign in</button>
+      </form>
+    </section>
+  </main>
   <script>
-    document.querySelector("#loginForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = document.querySelector("#username").value;
-      const password = document.querySelector("#password").value;
+    const form = document.getElementById('login-form');
+    const statusBanner = document.getElementById('login-status');
 
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+    function showStatus(message, type = 'info') {
+      statusBanner.textContent = message;
+      statusBanner.className = `status-banner show ${type}`;
+    }
 
-      const data = await res.json().catch(() => null);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showStatus('Signing in…', 'info');
+      const identifier = form.identifier.value.trim();
+      const password = form.password.value;
 
-      if (!data || !data.success) {
-        document.getElementById("error").innerText = data?.message || "Login failed";
-        return;
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, password }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to login.');
+        }
+
+        showStatus(`Welcome back, ${data.user.name || data.user.identifier}!`, 'success');
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 800);
+      } catch (error) {
+        showStatus(error.message, 'error');
       }
-
-      localStorage.setItem("user", JSON.stringify(data.user));
-      window.location.href = "/dashboard.html";
     });
   </script>
 </body>
