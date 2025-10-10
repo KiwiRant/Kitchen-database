@@ -1,37 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Create User</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen CRM · Create User</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h2>Create User</h2>
-  <form id="createUserForm">
-    <input type="text" id="username" placeholder="Username" required><br>
-    <input type="password" id="password" placeholder="Password" required><br>
-    <select id="role">
-      <option value="admin">Admin</option>
-      <option value="user">User</option>
-    </select><br>
-    <button type="submit">Create User</button>
-  </form>
-  <p id="result"></p>
-
+  <header>
+    <h1>Kitchen CRM</h1>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="sales.html">Sales</a>
+      <a href="quotes.html">Quotes</a>
+      <a href="login.html">Login</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Create a new user</h2>
+      <p class="description">Fill in the details below to invite a new staff member or administrator.</p>
+      <div id="status" class="status-banner"></div>
+      <form id="user-form">
+        <div class="grid two-columns">
+          <div>
+            <label for="identifier">Username or email</label>
+            <input id="identifier" name="identifier" required placeholder="jessica@kitchen.co">
+          </div>
+          <div>
+            <label for="role">Role</label>
+            <select id="role" name="role">
+              <option value="staff" selected>Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top: 1rem;">
+          <label for="name">Full name</label>
+          <input id="name" name="name" placeholder="Jessica Harper">
+        </div>
+        <div style="margin-top: 1rem;">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required>
+        </div>
+        <button type="submit" style="margin-top: 1.5rem;">Create user</button>
+      </form>
+    </section>
+  </main>
   <script>
-    document.getElementById("createUserForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = document.getElementById("username").value;
-      const password = document.getElementById("password").value;
-      const role = document.getElementById("role").value;
+    const form = document.getElementById('user-form');
+    const statusBanner = document.getElementById('status');
 
-      const res = await fetch("/api/add-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role })
-      });
+    function showStatus(message, type = 'info') {
+      statusBanner.textContent = message;
+      statusBanner.className = `status-banner show ${type}`;
+    }
 
-      const data = await res.json().catch(() => null);
-      document.getElementById("result").innerText = data?.success ? "User created!" : "Error: " + (data?.error || "Failed");
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showStatus('Creating user…', 'info');
+      const payload = {
+        identifier: form.identifier.value.trim(),
+        name: form.name.value.trim(),
+        password: form.password.value,
+        role: form.role.value,
+      };
+
+      try {
+        const response = await fetch('/api/add-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to create user.');
+        }
+        showStatus(`User ${data.user.identifier} created successfully.`, 'success');
+        form.reset();
+        form.role.value = 'staff';
+        form.identifier.focus();
+      } catch (error) {
+        showStatus(error.message, 'error');
+      }
     });
   </script>
 </body>
