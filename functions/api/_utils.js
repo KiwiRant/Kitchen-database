@@ -25,73 +25,15 @@ export async function readJson(request) {
 }
 
 export async function requireDb(env) {
-  if (!env) {
-    throw Object.assign(new Error('No environment bindings were provided to the request'), { status: 500 });
+  if (!env || !env.DB) {
+    throw Object.assign(new Error('Database binding DB is not configured'), { status: 500 });
   }
-
-  const candidateBindings = [
-    'DB',
-    'DATABASE',
-    'D1',
-    'DB_MAIN',
-    'DB_PRIMARY',
-    'KITCHEN_DB',
-  ];
-
-  for (const name of candidateBindings) {
-    const binding = env[name];
-    if (binding && typeof binding.prepare === 'function') {
-      return binding;
-    }
-  }
-
-  const available = Object.keys(env)
-    .filter((key) => env[key] && typeof env[key].prepare === 'function')
-    .sort();
-
-  const hint = available.length
-    ? `Available database-like bindings: ${available.join(', ')}`
-    : 'No database-like bindings were found on the request environment.';
-
-  throw Object.assign(new Error(`Database binding is not configured. ${hint}`), { status: 500 });
-}
-
-async function fetchTableInfo(db, table) {
-  const result = await db.prepare(`PRAGMA table_info('${table}')`).all();
-  return result?.results || [];
-}
-
-async function createUsersTable(db) {
-  await db
-    .prepare(
-      [
-        'CREATE TABLE IF NOT EXISTS users (',
-        '  id INTEGER PRIMARY KEY AUTOINCREMENT,',
-        '  username TEXT UNIQUE NOT NULL,',
-        "  password_hash TEXT NOT NULL,",
-        '  name TEXT,',
-        "  role TEXT NOT NULL DEFAULT 'staff',",
-        "  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
-        ')',
-      ].join('\n'),
-    )
-    .run();
+  return env.DB;
 }
 
 export async function getUsersMetadata(db) {
-  let info;
-  try {
-    info = await fetchTableInfo(db, 'users');
-  } catch (error) {
-    throw Object.assign(new Error(`Unable to inspect users table: ${error.message}`), { status: 500 });
-  }
-
-  if (!info.length) {
-    await createUsersTable(db);
-    info = await fetchTableInfo(db, 'users');
-  }
-
-  const columns = info.map((col) => ({
+  const info = await db.prepare("PRAGMA table_info('users')").all();
+  const columns = (info?.results || []).map((col) => ({
     name: col.name,
     lower: col.name.toLowerCase(),
     notNull: Boolean(col.notnull),
@@ -108,55 +50,20 @@ export async function getUsersMetadata(db) {
     return null;
   };
 
-  const identifierColumn =
-    findColumn(['username', 'email', 'user_name', 'user', 'login', 'identifier']) ||
-    columns.find((col) => col.lower.includes('email') || col.lower.includes('user'))?.name ||
-    null;
-
-  const passwordColumn =
-    findColumn(['password_hash', 'password', 'pass_hash', 'passwordhash', 'pwd_hash']) ||
-    columns.find((col) => col.lower.includes('pass'))?.name ||
-    null;
-
-  const nameColumn = findColumn(['name', 'full_name', 'display_name']);
-  const roleColumn = findColumn(['role', 'user_role', 'account_role', 'type', 'permission']);
+  const identifierColumn = findColumn(['username', 'email']);
+  const passwordColumn = findColumn(['password_hash', 'password']);
+  const nameColumn = findColumn(['name', 'full_name']);
+  const roleColumn = findColumn(['role']);
 
   const required = columns
     .filter((col) => col.notNull && !col.hasDefault)
     .map((col) => col.name);
 
   if (!identifierColumn) {
-    throw Object.assign(
-      new Error('The users table needs a username or email column. Run the latest schema migration or add one manually.'),
-      { status: 500 },
-    );
+    throw Object.assign(new Error('The users table is missing a username or email column'), { status: 500 });
   }
   if (!passwordColumn) {
-    throw Object.assign(
-      new Error('The users table needs a password column. Run the latest schema migration or add one manually.'),
-      { status: 500 },
-    );
-  }
-
-  const allowedRequired = new Set([identifierColumn, passwordColumn]);
-  if (nameColumn) {
-    allowedRequired.add(nameColumn);
-  }
-  if (roleColumn) {
-    allowedRequired.add(roleColumn);
-  }
-
-  const unsupportedRequired = required.filter((name) => !allowedRequired.has(name));
-
-  if (unsupportedRequired.length) {
-    const listed = unsupportedRequired.join(', ');
-    throw Object.assign(
-      new Error(
-        `The users table has required columns that are not supported by this application: ${listed}. ` +
-          'Either make these columns optional or provide default values.',
-      ),
-      { status: 400 },
-    );
+    throw Object.assign(new Error('The users table is missing a password column'), { status: 500 });
   }
 
   return {
@@ -182,21 +89,10 @@ export function normaliseRole(role) {
 }
 
 export async function hashPassword(password) {
-  const value = typeof password === 'string' ? password : String(password ?? '');
-
-  if (typeof crypto !== 'undefined' && crypto?.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(value);
-    const digest = await crypto.subtle.digest('SHA-256', data);
-    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  if (typeof process !== 'undefined' && process.versions?.node) {
-    const { createHash } = await import('node:crypto');
-    return createHash('sha256').update(value).digest('hex');
-  }
-
-  throw Object.assign(new Error('Password hashing is not supported in this environment'), { status: 500 });
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function safeCompare(a, b) {
@@ -241,3 +137,103 @@ export function formatLineItems(items) {
     createdAt: item.created_at,
   }));
 }
+const encoder = new TextEncoder();
+
+export async function parseJsonBody(request) {
+  const contentType = request.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return request.json();
+  }
+
+  const text = await request.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+export function jsonResponse(data, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(data), { ...init, headers });
+}
+
+export function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export async function getTableColumns(db, tableName) {
+  if (!db) {
+    throw new Error("Database binding DB is not configured");
+  }
+
+  const safeName = tableName.replaceAll("'", "''");
+  const { results } = await db
+    .prepare(
+      `SELECT name, notnull, dflt_value, pk FROM pragma_table_info('${safeName}') ORDER BY cid`
+    )
+    .all();
+
+  return results.map((column) => ({
+    name: column.name,
+    required: Boolean(column.notnull) && column.dflt_value === null && column.pk === 0,
+    hasDefault: column.dflt_value !== null,
+    primaryKey: column.pk === 1,
+  }));
+}
+
+export async function getUsersTableMetadata(db) {
+  const columns = await getTableColumns(db, "users");
+  const byName = Object.fromEntries(columns.map((column) => [column.name, column]));
+
+  const identifierColumn = byName.username ? "username" : byName.email ? "email" : null;
+  const passwordColumn = byName.password ? "password" : null;
+
+  const supported = new Set([
+    "id",
+    "password",
+    "role",
+    "name",
+    "created_at",
+    "updated_at",
+  ]);
+  if (identifierColumn) {
+    supported.add(identifierColumn);
+  }
+
+  const unsupportedRequiredColumns = columns
+    .filter((column) => column.required && !supported.has(column.name))
+    .map((column) => column.name);
+
+  return {
+    columns: byName,
+    identifierColumn,
+    passwordColumn,
+    unsupportedRequiredColumns,
+  };
+}
+
+export async function hashPassword(password) {
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function verifyPassword(inputPassword, storedPassword) {
+  if (!isNonEmptyString(storedPassword)) {
+    return false;
+  }
+
+  if (inputPassword === storedPassword) {
+    return true;
+  }
+
+  const hashed = await hashPassword(inputPassword);
+  return hashed === storedPassword;
+}
+
