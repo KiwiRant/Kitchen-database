@@ -137,7 +137,6 @@ export function formatLineItems(items) {
     createdAt: item.created_at,
   }));
 }
-const encoder = new TextEncoder();
 
 export async function parseJsonBody(request) {
   const contentType = request.headers.get("content-type") || "";
@@ -153,12 +152,6 @@ export async function parseJsonBody(request) {
   } catch {
     return {};
   }
-}
-
-export function jsonResponse(data, init = {}) {
-  const headers = new Headers(init.headers || {});
-  headers.set("Content-Type", "application/json");
-  return new Response(JSON.stringify(data), { ...init, headers });
 }
 
 export function isNonEmptyString(value) {
@@ -216,14 +209,6 @@ export async function getUsersTableMetadata(db) {
   };
 }
 
-export async function hashPassword(password) {
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export async function verifyPassword(inputPassword, storedPassword) {
   if (!isNonEmptyString(storedPassword)) {
     return false;
@@ -236,4 +221,3 @@ export async function verifyPassword(inputPassword, storedPassword) {
   const hashed = await hashPassword(inputPassword);
   return hashed === storedPassword;
 }
-
