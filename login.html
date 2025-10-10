@@ -67,53 +67,6 @@
         }, 800);
       } catch (error) {
         showStatus(error.message, 'error');
-  <div class="login-box">
-    <h2>Login</h2>
-    <form id="loginForm">
-      <input type="text" id="username" placeholder="Username or Email" required />
-      <input type="password" id="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-    </form>
-    <p id="error"></p>
-  </div>
-
-  <script>
-    const form = document.querySelector("#loginForm");
-    const errorEl = document.getElementById("error");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      errorEl.textContent = "";
-      errorEl.className = "";
-
-      const username = document.querySelector("#username").value.trim();
-      const password = document.querySelector("#password").value;
-
-      const submitBtn = form.querySelector("button[type='submit']");
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Signing in...";
-
-      try {
-        const res = await fetch("/api/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-
-        const data = await res.json().catch(() => null);
-
-        if (!res.ok || !data?.success) {
-          throw new Error(data?.message || `Login failed with status ${res.status}`);
-        }
-
-        localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = "/dashboard.html";
-      } catch (error) {
-        errorEl.textContent = error.message;
-        errorEl.className = "error";
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Login";
       }
     });
   </script>
